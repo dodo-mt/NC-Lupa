@@ -14,6 +14,7 @@ import webview
 import config
 import db
 import thumbs
+import winstate
 
 if getattr(sys, "frozen", False):
     UI_DIR = Path(getattr(sys, "_MEIPASS", config.APP_DIR)) / "ui"
@@ -26,6 +27,17 @@ SEARCH_LIMIT = 2000  # max. počet riadkov vo výsledku
 
 def _like_escape(s: str) -> str:
     return s.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+
+
+def _term_to_like(term: str) -> str:
+    """Hľadané slovo -> LIKE vzor.
+
+    Bez zástupných znakov = časť názvu ('3674' -> '%3674%').
+    So '*' / '?' = celý názov ('cnc_vyk*.pdf' -> 'cnc!_vyk%.pdf').
+    """
+    if "*" in term or "?" in term:
+        return _like_escape(term).replace("*", "%").replace("?", "_")
+    return f"%{_like_escape(term)}%"
 
 
 class Api:
@@ -125,7 +137,7 @@ class Api:
                 args += [rel, _like_escape(rel) + "\\%"]
         for term in q.split():
             where.append("f.name LIKE ? ESCAPE '!'")
-            args.append(f"%{_like_escape(term)}%")
+            args.append(_term_to_like(term))
         if owner:
             where.append("f.owner = ?")
             args.append(owner)
@@ -199,7 +211,7 @@ class Api:
 
 def main():
     api = Api(config.DB_PATH)
-    webview.create_window(
+    window = webview.create_window(
         "Lupa",
         str(UI_DIR / "index.html"),
         js_api=api,
@@ -208,6 +220,7 @@ def main():
         min_size=(900, 560),
         background_color="#eef1f5",
     )
+    winstate.attach(window, "main")
     # private_mode=False, aby sa pamätali nastavenia UI (šírky panelov) medzi spusteniami
     webview.start(
         debug="--debug" in sys.argv,

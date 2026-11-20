@@ -182,17 +182,46 @@ mark { background: #fef08a; color: inherit; border-radius: 2px; }
 
 /* ťahateľný okraj medzi panelmi */
 .resizer {
-  width: 6px;
-  margin: 0 -3px;
+  width: 10px;
+  margin: 0 -5px;
   flex: none;
   cursor: col-resize;
   position: relative;
   z-index: 2;
 }
-.resizer:hover, .resizer.drag { background: #93c5fd; }
+/* tenká čiara po celej výške */
+.resizer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  background: transparent;
+  transition: background .12s;
+}
+/* úchyt – 5 bodiek v strede */
+.resizer::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 34px;
+  margin-top: -17px;
+  border-radius: 3px;
+  background: #fff radial-gradient(circle, #9ca3af 1.3px, transparent 1.6px) center / 6px 7px repeat-y;
+  border: 1px solid #d1d5db;
+  box-sizing: content-box;
+  left: 1px;
+}
+.resizer:hover::before, .resizer.drag::before { background: #93c5fd; }
+.resizer:hover::after, .resizer.drag::after {
+  border-color: #60a5fa;
+  background-image: radial-gradient(circle, #1d4ed8 1.3px, transparent 1.6px);
+}
 body.resizing { cursor: col-resize; }
 body.resizing iframe, body.resizing .layout { pointer-events: none; }
-body.resizing .resizer.drag { pointer-events: auto; }
+body.resizing .resizer.drag, body.resizing .col-grip.drag { pointer-events: auto; }
 
 /* --- strom --- */
 .tree { display: flex; flex-direction: column; gap: 1px; }
@@ -245,7 +274,29 @@ body.resizing .resizer.drag { pointer-events: auto; }
   border-radius: 10px;
   position: relative;
 }
-table.files { width: 100%; border-collapse: collapse; table-layout: fixed; }
+/* šírky stĺpcov a min-width nastavuje app.js (ťahanie, pamätanie);
+   radšej vodorovný posuvník, ako zmačkané stĺpce */
+table.files { width: 100%; min-width: 1000px; border-collapse: collapse; table-layout: fixed; }
+.col-grip {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 9px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 2;
+}
+.col-grip::after {
+  content: "";
+  position: absolute;
+  top: 25%;
+  bottom: 25%;
+  left: 4px;
+  width: 1px;
+  background: #d1d5db;
+}
+.col-grip:hover::after, .col-grip.drag::after { top: 0; bottom: 0; width: 2px; left: 3px; background: #60a5fa; }
+.files th:last-child .col-grip { right: 0; }
 .files th {
   position: sticky;
   top: 0;
@@ -278,7 +329,7 @@ table.files { width: 100%; border-collapse: collapse; table-layout: fixed; }
 
 .c-type { width: 64px; }
 .c-name { width: auto; }
-.c-folder { width: 18%; }
+.c-folder { width: 200px; }
 .c-owner { width: 100px; }
 .c-date { width: 130px; }
 .c-size { width: 84px; text-align: right; }

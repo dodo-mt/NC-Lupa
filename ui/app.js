@@ -42,7 +42,12 @@ function esc(s) {
 function highlight(name) {
   const terms = state.q.split(/\s+/).filter(Boolean);
   if (!terms.length) return esc(name);
-  const re = new RegExp(terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi');
+  // slovo so * / ? = celý názov, inak časť názvu
+  const toRe = (t) => {
+    const e = t.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    return /[*?]/.test(t) ? `^${e.replace(/\*/g, '.*').replace(/\?/g, '.')}$` : e.replace(/[*?]/g, '');
+  };
+  const re = new RegExp(terms.map(toRe).join('|'), 'gi');
   let out = '';
   let last = 0;
   for (const m of name.matchAll(re)) {
@@ -276,7 +281,8 @@ function renderHead() {
     if (n > state.files.length) cnt += ` · zobrazených ${state.files.length} najnovších`;
   }
   $('count').textContent = cnt;
-  document.querySelector('th.c-folder').textContent = all ? 'Zákazka / priečinok' : 'Priečinok';
+  // meniť len text, nie celý obsah (v hlavičke je úchyt na ťahanie)
+  document.querySelector('th.c-folder').firstChild.nodeValue = all ? 'Zákazka / priečinok' : 'Priečinok';
 }
 
 function sortedFiles() {
@@ -467,7 +473,7 @@ function bind() {
   });
   document.querySelector('.files thead').addEventListener('click', (e) => {
     const th = e.target.closest('th');
-    if (!th) return;
+    if (!th || colDragged || e.target.closest('.col-grip')) return;
     const k = th.dataset.sort;
     if (state.sortKey === k) state.sortDir = -state.sortDir;
     else { state.sortKey = k; state.sortDir = (k === 'modified' || k === 'created' || k === 'size') ? -1 : 1; }
@@ -549,6 +555,77 @@ function bindResizers() {
   }
 }
 
+// --- ťahateľné stĺpce tabuľky ---------------------------------------------
+// Názov nemá pevnú šírku – vypĺňa voľné miesto; jeho ťahaním sa mení minimum.
+const COL_DEFAULTS = { ftype: 64, name: 300, folder: 200, owner: 100, created: 130, modified: 130, size: 84 };
+const COL_MIN = 40;
+let colW = { ...COL_DEFAULTS };
+let colDragged = false; // po ťahaní potlačiť klik = triedenie
+
+function applyCols() {
+  let sum = 0;
+  for (const th of document.querySelectorAll('.files th')) {
+    const k = th.dataset.sort;
+    sum += colW[k];
+    th.style.width = k === 'name' ? '' : `${colW[k]}px`;
+  }
+  document.querySelector('table.files').style.minWidth = `${sum}px`;
+}
+
+function saveCols() {
+  try { localStorage.setItem('lupa.cols', JSON.stringify(colW)); } catch (e) { /* nevadí */ }
+}
+
+function bindColumns() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('lupa.cols') || 'null');
+    if (saved) colW = { ...COL_DEFAULTS, ...saved };
+  } catch (e) { /* nevadí */ }
+
+  for (const th of document.querySelectorAll('.files th')) {
+    const k = th.dataset.sort;
+    const grip = document.createElement('span');
+    grip.className = 'col-grip';
+    grip.title = 'Ťahaním zmeníš šírku, dvojklik = predvolená';
+    th.appendChild(grip);
+
+    grip.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      grip.setPointerCapture(e.pointerId);
+      grip.classList.add('drag');
+      document.body.classList.add('resizing');
+      const startX = e.clientX;
+      const startW = th.getBoundingClientRect().width;
+      colDragged = false;
+      const move = (ev) => {
+        const dx = ev.clientX - startX;
+        if (Math.abs(dx) > 2) colDragged = true;
+        colW[k] = Math.max(COL_MIN, Math.round(startW + dx));
+        applyCols();
+      };
+      const up = () => {
+        grip.removeEventListener('pointermove', move);
+        grip.removeEventListener('pointerup', up);
+        grip.classList.remove('drag');
+        document.body.classList.remove('resizing');
+        saveCols();
+        setTimeout(() => { colDragged = false; }, 0);
+      };
+      grip.addEventListener('pointermove', move);
+      grip.addEventListener('pointerup', up);
+    });
+    grip.addEventListener('click', (e) => e.stopPropagation());
+    grip.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      colW[k] = COL_DEFAULTS[k];
+      applyCols();
+      saveCols();
+    });
+  }
+  applyCols();
+}
+
 function clearSearch() {
   $('q').value = '';
   $('qClear').hidden = true;
@@ -588,4 +665,5 @@ async function init() {
 
 bind();
 bindResizers();
+bindColumns();
 window.addEventListener('pywebviewready', init);
