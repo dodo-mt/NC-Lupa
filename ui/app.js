@@ -111,6 +111,15 @@ function findJob(id) {
   return null;
 }
 
+function findCust(id) {
+  return state.tree.find((c) => c.id === id) || null;
+}
+
+// Výsledok obsahuje viac zákaziek (Celé L:\ alebo vybraný zákazník) → ukazovať aj zákazku
+function multiJob() {
+  return state.scope === 'all' || (state.sel && !state.sel.job);
+}
+
 // Z plochého zoznamu rel_path postaví vnorený strom priečinkov
 function buildDirTree(positions) {
   const root = { children: [] };
@@ -140,7 +149,18 @@ function complStatus(miss) {
 // (model a výkres bývajú v koreni zákazky, NC v podpriečinkoch pozícií).
 function renderCompl() {
   const box = $('compl');
-  const f = state.scope === 'job' && state.sel ? findJob(state.sel.job) : null;
+  if (state.scope !== 'job' || !state.sel) { box.hidden = true; return; }
+  if (!state.sel.job) {
+    // zákazník: súhrn – koľko zákaziek je úplných
+    const c = findCust(state.sel.cust);
+    if (!c || !c.jobs.length) { box.hidden = true; return; }
+    const ok = c.jobs.filter((j) => !j.missing.length).length;
+    const all = ok === c.jobs.length;
+    box.hidden = false;
+    box.innerHTML = `<span class="${all ? 'y' : 'n'}" title="Úplné zákazky (Model, PDF, CAM, NC, Listy)">${all ? '✓' : '✗'} úplné ${ok}/${c.jobs.length}</span>`;
+    return;
+  }
+  const f = findJob(state.sel.job);
   if (!f) { box.hidden = true; return; }
   box.hidden = false;
   box.innerHTML = complCheck(f.job.missing).map((c) =>
@@ -151,11 +171,15 @@ function isSelNode(jobId, rel) {
   return state.scope === 'job' && state.sel && state.sel.job === jobId && state.sel.rel === rel;
 }
 
+function isSelCust(custId) {
+  return state.scope === 'job' && state.sel && !state.sel.job && state.sel.cust === custId;
+}
+
 function renderTree() {
   const out = [];
   for (const c of state.tree) {
     const open = state.openCust.has(c.id);
-    out.push(`<div class="node cust${open ? ' open' : ''}" data-cust="${c.id}" style="padding-left:6px">
+    out.push(`<div class="node cust${open ? ' open' : ''}${isSelCust(c.id) ? ' sel' : ''}" data-cust="${c.id}" style="padding-left:6px">
       <span class="tw">${ICON_CHEVRON}</span><span class="lbl">${esc(c.name)}</span><span class="num">${c.jobs.length}</span></div>`);
     if (!open) continue;
     for (const j of c.jobs) {
@@ -187,8 +211,14 @@ async function onTreeClick(e) {
   const onTwisty = !!e.target.closest('.tw');
 
   if (node.dataset.cust) {
+    // klik na šípku = rozbaliť/zbaliť; klik na názov = vybrať zákazníka (+ rozbaliť), druhý klik zbalí
     const id = Number(node.dataset.cust);
-    state.openCust.has(id) ? state.openCust.delete(id) : state.openCust.add(id);
+    if (onTwisty || isSelCust(id)) {
+      state.openCust.has(id) ? state.openCust.delete(id) : state.openCust.add(id);
+    } else {
+      state.openCust.add(id);
+    }
+    if (!onTwisty) await selectCustomer(id);
     renderTree();
     return;
   }
@@ -212,7 +242,17 @@ async function onTreeClick(e) {
 
 // Vyberie zákazku/priečinok a prepne rozsah na „Aktuálna zákazka“
 async function selectNode(jobId, rel) {
-  state.sel = { job: jobId, rel };
+  const f = findJob(jobId);
+  await applySelection({ cust: f ? f.cust.id : null, job: jobId, rel });
+}
+
+// Vyberie zákazníka – zoznam ukáže súbory všetkých jeho zákaziek
+async function selectCustomer(custId) {
+  await applySelection({ cust: custId, job: null, rel: '' });
+}
+
+async function applySelection(sel) {
+  state.sel = sel;
   state.scope = 'job';
   state.selFile = null;
   renderScope();
@@ -241,6 +281,102 @@ async function gotoJob(jobId, rel) {
   if (keepFile && state.files.some((x) => x.id === keepFile)) selectFile(keepFile, true);
 }
 
+// --- kontextové menu stromu (pravé tlačidlo) --------------------------------
+async function expandCustomer(custId) {
+  const c = findCust(custId);
+  if (!c) return;
+  state.openCust.add(custId);
+  const all = await api.get_customer_positions(custId); // naraz pre všetky zákazky
+  for (const j of c.jobs) {
+    state.positions[j.id] = all[String(j.id)] || [];
+    state.openJobs.add(j.id);
+    for (const p of state.positions[j.id]) state.openDirs.add(`${j.id}|${p.rel_path}`);
+  }
+}
+
+function collapseCustomer(custId) {
+  const c = findCust(custId);
+  if (!c) return;
+  state.openCust.delete(custId);
+  for (const j of c.jobs) collapseUnder(j.id, '');
+}
+
+async function expandUnder(jobId, rel) {
+  state.openJobs.add(jobId);
+  await ensurePositions(jobId);
+  for (const p of state.positions[jobId]) {
+    if (!rel || p.rel_path === rel || p.rel_path.startsWith(rel + '\\')) state.openDirs.add(`${jobId}|${p.rel_path}`);
+  }
+}
+
+function collapseUnder(jobId, rel) {
+  if (!rel) state.openJobs.delete(jobId);
+  const prefix = `${jobId}|${rel}`;
+  for (const k of [...state.openDirs]) {
+    if (!rel ? k.startsWith(`${jobId}|`) : (k === prefix || k.startsWith(prefix + '\\'))) state.openDirs.delete(k);
+  }
+}
+
+function hideCtx() {
+  $('ctx').hidden = true;
+}
+
+function onTreeContext(e) {
+  const node = e.target.closest('.node');
+  e.preventDefault();
+  const items = [];   // [text, akcia] alebo '-' / {title}
+  if (node && node.dataset.cust) {
+    const c = findCust(Number(node.dataset.cust));
+    items.push({ title: c.name });
+    items.push(['Rozbaliť všetky zákazky', async () => { await expandCustomer(c.id); }]);
+    items.push(['Zbaliť', () => collapseCustomer(c.id)]);
+    items.push('-');
+    items.push(['Otvoriť priečinok', () => openPath(c.path)]);
+  } else if (node) {
+    const jobId = Number(node.dataset.job);
+    const rel = node.dataset.rel ?? '';
+    const f = findJob(jobId);
+    const pos = rel ? (state.positions[jobId] || []).find((p) => p.rel_path === rel) : null;
+    items.push({ title: rel ? `${f.job.name} \\ ${rel}` : f.job.name });
+    items.push(['Rozbaliť všetko pod', async () => { await expandUnder(jobId, rel); }]);
+    items.push(['Zbaliť všetko pod', () => collapseUnder(jobId, rel)]);
+    items.push('-');
+    items.push(['Otvoriť priečinok', () => openPath(pos ? pos.path : f.job.path)]);
+  }
+  if (items.length) items.push('-');
+  items.push(['Zbaliť celý strom', () => {
+    state.openCust.clear();
+    state.openJobs.clear();
+    state.openDirs.clear();
+  }]);
+
+  const menu = $('ctx');
+  const actions = [];
+  menu.innerHTML = items.map((it) => {
+    if (it === '-') return '<hr>';
+    if (it.title) return `<div class="ctx-title">${esc(it.title)}</div>`;
+    actions.push(it[1]);
+    return `<button type="button" role="menuitem" data-i="${actions.length - 1}">${esc(it[0])}</button>`;
+  }).join('');
+  menu.onclick = async (ev) => {
+    const b = ev.target.closest('button');
+    if (!b) return;
+    hideCtx();
+    await actions[Number(b.dataset.i)]();
+    renderTree();
+  };
+  menu.hidden = false;
+  // umiestniť k myši, ale nevyliezť z okna
+  const r = menu.getBoundingClientRect();
+  menu.style.left = `${Math.min(e.clientX, window.innerWidth - r.width - 4)}px`;
+  menu.style.top = `${Math.min(e.clientY, window.innerHeight - r.height - 4)}px`;
+}
+
+async function openPath(path) {
+  const r = await api.open_folder(null, path);
+  if (!r.ok) toast(r.error);
+}
+
 // --- filtre ----------------------------------------------------------------
 function renderChips() {
   $('chips').innerHTML = state.typeKeys.map((k) => {
@@ -254,6 +390,7 @@ function renderChips() {
 function renderScope() {
   $('scopeJob').classList.toggle('on', state.scope === 'job');
   $('scopeAll').classList.toggle('on', state.scope === 'all');
+  $('scopeJob').textContent = state.sel && !state.sel.job ? 'Aktuálny zákazník' : 'Aktuálna zákazka';
 }
 
 function selectedTypes() {
@@ -274,6 +411,7 @@ async function refresh() {
       owner: state.owner,
       types,
       scope: state.scope,
+      customer_id: state.sel ? state.sel.cust : null,
       job_id: state.sel ? state.sel.job : null,
       rel: state.sel ? state.sel.rel : '',
     });
@@ -290,12 +428,17 @@ async function refresh() {
 
 function renderHead() {
   const all = state.scope === 'all';
-  const f = state.sel ? findJob(state.sel.job) : null;
+  const f = state.sel && state.sel.job ? findJob(state.sel.job) : null;
+  const cust = state.sel && !state.sel.job ? findCust(state.sel.cust) : null;
   let crumb = '';
   let heading = '';
   if (all) {
     crumb = `Celé ${state.meta.root}`;
     heading = esc(state.q ? `Hľadanie „${state.q}“` : 'Všetky súbory');
+  } else if (cust) {
+    crumb = 'Zákazník';
+    const n = cust.jobs.length;
+    heading = esc(cust.name) + `<span class="h-sub"> · ${n} ${n === 1 ? 'zákazka' : n >= 2 && n <= 4 ? 'zákazky' : 'zákaziek'}</span>`;
   } else if (f) {
     // nadpis = zákazka, podpriečinok menším sivým písmom za lomkou
     const rel = state.sel.rel;
@@ -316,14 +459,14 @@ function renderHead() {
   }
   $('count').textContent = cnt;
   // meniť len text, nie celý obsah (v hlavičke je úchyt na ťahanie)
-  document.querySelector('th.c-folder').firstChild.nodeValue = all ? 'Zákazka / priečinok' : 'Priečinok';
+  document.querySelector('th.c-folder').firstChild.nodeValue = multiJob() ? 'Zákazka / priečinok' : 'Priečinok';
 }
 
 function sortedFiles() {
   const k = state.sortKey;
   const dir = state.sortDir;
   const typeOrder = (t) => (state.types[t] ? state.types[t].order : 99);
-  const loc = (x) => (state.scope === 'all' ? `${x.job}\\${x.folder}` : x.folder);
+  const loc = (x) => (multiJob() ? `${x.job}\\${x.folder}` : x.folder);
   return [...state.files].sort((a, b) => {
     let r;
     if (k === 'ftype') r = typeOrder(a.ftype) - typeOrder(b.ftype);
@@ -345,7 +488,7 @@ function renderFiles() {
     return;
   }
   $('gallery').innerHTML = '';
-  const all = state.scope === 'all';
+  const all = multiJob();
   $('rows').innerHTML = files.map((f) => {
     const loc = all ? (f.folder ? `${f.job} \\ ${f.folder}` : f.job) : f.folder;
     const locTitle = all ? `${f.customer} \\ ${f.job}${f.folder ? ' \\ ' + f.folder : ''}` : f.folder;
@@ -368,8 +511,8 @@ function renderFiles() {
 function renderEmpty(files) {
   let empty = '';
   if (!files.length) {
-    if (state.scope === 'job' && !state.sel) empty = `Vľavo vyber zákazku alebo prepni na „${$('scopeAll').textContent}“.`;
-    else if (state.typesOn.size === 0) empty = 'Nie je zapnutý žiadny typ súboru.';
+    if (state.scope === 'job' && !state.sel) empty = `Vľavo vyber zákazníka alebo zákazku, alebo prepni na „${$('scopeAll').textContent}“.`;
+    else if (state.typesOn.size === 0) empty = 'Nie je zapnutý žiadny typ – klikni hore na štítky typov, ktoré chceš vidieť.';
     else if (state.q || state.owner || selectedTypes()) empty = 'Nič sa nenašlo. Skús zmeniť hľadanie alebo filtre.';
     else empty = 'V tomto priečinku nie sú žiadne súbory.';
   }
@@ -390,7 +533,7 @@ function renderGallery(files) {
   galGen++;
   thumbQueue = [];
   if (galObserver) galObserver.disconnect();
-  const all = state.scope === 'all';
+  const all = multiJob();
   $('gallery').innerHTML = files.map((f) => {
     const sub = all ? `${f.job}${f.folder ? ' \\ ' + f.folder : ''}` : (f.folder || '');
     const date = fmtDate(f.modified).slice(0, 10);
@@ -514,7 +657,7 @@ function renderDetail() {
     <div class="d-btns">
       <button type="button" class="btn primary" id="btnOpen">Otvoriť</button>
       <button type="button" class="btn" id="btnFolder">Otvoriť priečinok</button>
-      ${state.scope === 'all' ? '<button type="button" class="btn" id="btnGoto" style="flex-basis:100%">Prejsť na zákazku</button>' : ''}
+      ${multiJob() ? '<button type="button" class="btn" id="btnGoto" style="flex-basis:100%">Prejsť na zákazku</button>' : ''}
     </div>`;
   $('btnOpen').onclick = () => openFile(f.id);
   $('preview').ondblclick = () => openFile(f.id);
@@ -560,6 +703,22 @@ async function openFolder(id) {
 // --- udalosti --------------------------------------------------------------
 function bind() {
   $('tree').addEventListener('click', onTreeClick);
+  $('tree').addEventListener('contextmenu', onTreeContext);
+  $('treeExpand').addEventListener('click', () => {
+    // rozbalí len zákazníkov (zákazky so všetkými priečinkami by pri tisícoch zákaziek boli priveľa)
+    state.tree.forEach((c) => state.openCust.add(c.id));
+    renderTree();
+  });
+  $('treeCollapse').addEventListener('click', () => {
+    state.openCust.clear();
+    state.openJobs.clear();
+    state.openDirs.clear();
+    renderTree();
+  });
+  document.addEventListener('mousedown', (e) => { if (!e.target.closest('#ctx')) hideCtx(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideCtx(); });
+  $('tree').addEventListener('scroll', hideCtx);
+  window.addEventListener('blur', hideCtx);
 
   // hľadanie
   const runSearch = debounce(() => refresh(), 200);
@@ -574,7 +733,7 @@ function bind() {
   $('qClear').addEventListener('click', () => { clearSearch(); $('q').focus(); });
 
   // filtre
-  $('owner').addEventListener('change', () => { state.owner = $('owner').value; refresh(); });
+  bindOwnerDropdown();
   $('chips').addEventListener('click', (e) => {
     const b = e.target.closest('.chip');
     if (!b) return;
@@ -591,6 +750,11 @@ function bind() {
   });
   $('chipsAll').addEventListener('click', () => {
     state.typesOn = new Set(state.typeKeys);
+    renderChips();
+    refresh();
+  });
+  $('chipsNone').addEventListener('click', () => {
+    state.typesOn = new Set();
     renderChips();
     refresh();
   });
@@ -653,6 +817,7 @@ function bind() {
       $('q').select();
       return;
     }
+    if (!$('ownerDrop').hidden) return; // rozbalený výber vlastníka má vlastné klávesy
     if (e.target.tagName === 'SELECT' || (e.target.tagName === 'INPUT' && e.target.type === 'range')) return;
     if (!state.view.length) return;
     const i = state.view.findIndex((f) => f.id === state.selFile);
@@ -680,7 +845,12 @@ const PANES = {
 function setPaneWidth(name, w) {
   const p = PANES[name];
   w = Math.max(p.min, Math.min(p.max, Math.round(w)));
-  document.querySelector(p.sel).style.width = `${w}px`;
+  if (name === 'tree') {
+    // šírka stromu je CSS premenná – podľa nej sa zarovnáva aj hľadanie a lišta filtrov
+    document.documentElement.style.setProperty('--tree-w', `${w}px`);
+  } else {
+    document.querySelector(p.sel).style.width = `${w}px`;
+  }
   return w;
 }
 
@@ -796,6 +966,107 @@ function bindColumns() {
   applyCols();
 }
 
+// --- výber vlastníka (vlastné rozbaľovacie menu v štýle Lupy) ---------------
+let ownerCur = 0;   // index zvýraznenej položky (klávesnica)
+
+function ownerItems() {
+  const f = $('ownerFilter').value.trim().toLowerCase();
+  const list = (state.owners || []).filter((o) => !f || o.owner.toLowerCase().includes(f));
+  return f ? list : [{ owner: '', n: null }, ...list];   // „Všetci“ len bez filtra
+}
+
+function renderOwnerList() {
+  const items = ownerItems();
+  ownerCur = Math.max(0, Math.min(ownerCur, items.length - 1));
+  const chk = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
+  $('ownerList').innerHTML = items.length ? items.map((o, i) => {
+    const sel = o.owner === state.owner;
+    const row = `<button type="button" role="option" aria-selected="${sel}" class="dd-item${sel ? ' sel' : ''}${i === ownerCur ? ' cur' : ''}" data-i="${i}">
+      <span class="chk">${sel ? chk : ''}</span><span class="nm">${o.owner ? esc(o.owner) : 'Všetci'}</span>${o.n != null ? `<span class="cnt">${o.n.toLocaleString('sk-SK')}</span>` : ''}</button>`;
+    return row + (!o.owner && items.length > 1 ? '<div class="dd-sep"></div>' : '');
+  }).join('') : '<div class="dd-empty">Nikto taký nie je.</div>';
+  const cur = $('ownerList').querySelector('.dd-item.cur');
+  if (cur) cur.scrollIntoView({ block: 'nearest' });
+}
+
+function openOwnerDrop() {
+  const chip = $('ownerChip');
+  const r = chip.getBoundingClientRect();
+  const dd = $('ownerDrop');
+  $('ownerFilter').value = '';
+  const items = ownerItems();
+  ownerCur = Math.max(0, items.findIndex((o) => o.owner === state.owner));
+  renderOwnerList();
+  dd.hidden = false;
+  dd.style.left = `${Math.min(r.left, window.innerWidth - dd.offsetWidth - 8)}px`;
+  dd.style.top = `${r.bottom + 4}px`;
+  chip.setAttribute('aria-expanded', 'true');
+  $('ownerFilter').focus();
+}
+
+function closeOwnerDrop() {
+  $('ownerDrop').hidden = true;
+  $('ownerChip').setAttribute('aria-expanded', 'false');
+}
+
+function pickOwner(owner) {
+  closeOwnerDrop();
+  if (owner === state.owner) return;
+  state.owner = owner;
+  $('ownerValue').textContent = owner || 'Všetci';
+  $('ownerChip').classList.toggle('active', !!owner);
+  refresh();
+}
+
+function bindOwnerDropdown() {
+  $('ownerChip').addEventListener('click', () => {
+    $('ownerDrop').hidden ? openOwnerDrop() : closeOwnerDrop();
+  });
+  $('ownerList').addEventListener('click', (e) => {
+    const b = e.target.closest('.dd-item');
+    if (b) pickOwner(ownerItems()[Number(b.dataset.i)].owner);
+  });
+  $('ownerFilter').addEventListener('input', () => { ownerCur = 0; renderOwnerList(); });
+  $('ownerFilter').addEventListener('keydown', (e) => {
+    const items = ownerItems();
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      ownerCur = Math.max(0, Math.min(items.length - 1, ownerCur + (e.key === 'ArrowDown' ? 1 : -1)));
+      renderOwnerList();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (items[ownerCur]) pickOwner(items[ownerCur].owner);
+    } else if (e.key === 'Escape') {
+      closeOwnerDrop();
+      $('ownerChip').focus();
+    }
+  });
+  document.addEventListener('mousedown', (e) => {
+    if (!$('ownerDrop').hidden && !e.target.closest('#ownerDrop, #ownerChip')) closeOwnerDrop();
+  });
+  window.addEventListener('blur', closeOwnerDrop);
+  window.addEventListener('resize', closeOwnerDrop);
+}
+
+// --- stavový riadok ---------------------------------------------------------
+function renderStatus() {
+  const m = state.meta;
+  const c = m.counts;
+  const num = (n) => n.toLocaleString('sk-SK');
+  $('stLeft').innerHTML = `<span class="mono">${esc(m.root)}</span>` +
+    (c ? ` · ${num(c.customers)} zákazníkov · ${num(c.jobs)} zákaziek · ${num(c.files)} súborov` : '');
+  const s = m.last_scan;
+  if (!m.db_ok) {
+    $('stRight').innerHTML = '<span class="stale">Databáza neexistuje</span>';
+  } else if (s) {
+    const stale = Date.now() / 1000 - s.finished > m.stale_hours * 3600;
+    const txt = `Posledný sken: ${fmtDate(s.finished)}${s.errors ? ` · chyby ${s.errors}` : ''}`;
+    $('stRight').innerHTML = stale
+      ? `<span class="stale" title="Údaje môžu byť neaktuálne – sken neprebehol viac ako ${m.stale_hours} h">${esc(txt)}</span>`
+      : esc(txt);
+  }
+}
+
 function clearSearch() {
   $('q').value = '';
   $('qClear').hidden = true;
@@ -809,8 +1080,6 @@ async function init() {
   meta.types.forEach((t, i) => { state.types[t.key] = { ...t, order: i }; });
   state.typeKeys = meta.types.map((t) => t.key);
   state.typesOn = new Set(state.typeKeys);
-  $('root').textContent = meta.root;
-  $('version').textContent = `v${meta.version}`;
   // na tlačidle krátko (L:\ ostane L:\, dlhá cesta = posledný priečinok), celá cesta v bublinke
   const root = meta.root.replace(/[\\/]+$/, '');
   $('scopeAll').textContent = `Celé ${root.length <= 3 ? meta.root : root.split(/[\\/]/).pop()}`;
@@ -819,18 +1088,12 @@ async function init() {
   renderScope();
   setCardSize(Number(lsGet('lupa.card', 220)));
   setMode(lsGet('lupa.mode', 'list') === 'gallery' ? 'gallery' : 'list');
+  renderStatus();
   if (!meta.db_ok) {
-    $('scanInfo').textContent = 'Databáza neexistuje';
     $('empty').textContent = `Databáza sa nenašla: ${meta.db} – spusti najprv scanner.py.`;
     return;
   }
-  if (meta.last_scan) {
-    const s = meta.last_scan;
-    $('scanInfo').textContent = `Sken: ${fmtDate(s.finished)}${s.errors ? ` · chyby ${s.errors}` : ''}`;
-  }
-  const owners = await api.get_owners();
-  $('owner').insertAdjacentHTML('beforeend',
-    owners.map((o) => `<option value="${esc(o.owner)}">${esc(o.owner)} (${o.n})</option>`).join(''));
+  state.owners = await api.get_owners();
   state.tree = await api.get_tree();
   if (state.tree.length === 1) state.openCust.add(state.tree[0].id);
   renderTree();

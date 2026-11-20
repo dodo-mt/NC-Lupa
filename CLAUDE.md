@@ -123,8 +123,14 @@ scan_log(id, started, finished, mode, files_seen, errors)
 
 Schválený návrh UI (maketa): https://claude.ai/artifact/MHEAKvNtdfXvU9EaucAA1w
 
-- Tmavá horná lišta (#111827) s názvom „Lupa“, hľadaním a prepínačom Zoznam / Galéria.
-- Biela lišta filtrov pod ňou.
+- Tmavá horná lišta (#111827) s názvom „Lupa“, hľadaním a prepínačom Zoznam / Galéria. Verzia v názve okna („Lupa 1.2.0“).
+- Biela lišta filtrov pod ňou (vlastník ako štítok, chipy typov, všetky/žiadne, rozsah).
+- **Zarovnanie**: hľadanie aj filtre začínajú nad zoznamom súborov – ľavý stĺpec má šírku stromu
+  (CSS premenná `--tree-w`, mení ju ťahanie). Nad stromom: „Zákazníci“ + Rozbaliť/Zbaliť všetko.
+- **Stavový riadok** dole (nenápadný): vľavo koreň + počty z DB, vpravo „Posledný sken“
+  (oranžovo, ak je starší ako 24 h). Čas skenu z `lupa_scan.json` vedľa DB – skener ho zapisuje
+  pri každom skene, aj keď DB nepublikuje.
+- Strom: klik na zákazníka = súbory všetkých jeho zákaziek; pravé tlačidlo = rozbaliť/zbaliť, otvoriť priečinok.
 - Rozloženie: strom vľavo (~260 px), zoznam v strede, detail vpravo (~360 px).
 - Písmo Inter (UI) a JetBrains Mono (názvy súborov, cesty) – ak nie sú offline dostupné, použi `Segoe UI` / `Consolas`.
 - Akcentová farba #1d4ed8. Bez emoji v UI, ikony ako inline SVG.

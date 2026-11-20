@@ -7,11 +7,10 @@
 </head>
 <body>
 <header class="topbar">
-  <div class="brand">
+  <!-- ľavý stĺpec má šírku stromu (--tree-w), hľadanie začína nad zoznamom súborov -->
+  <div class="brand left-col">
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m20 20-4.8-4.8"></path></svg>
     <span class="brand-name">Lupa</span>
-    <span class="brand-ver" id="version"></span>
-    <span class="brand-root mono" id="root"></span>
   </div>
   <div class="search">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
@@ -25,18 +24,29 @@
     <button type="button" data-mode="list" id="modeList">Zoznam</button>
     <button type="button" data-mode="gallery" id="modeGallery">Galéria</button>
   </div>
-  <span class="scan-info" id="scanInfo"></span>
 </header>
 
 <div class="filterbar">
-  <div class="fgroup">
-    <label for="owner" class="flabel">Vlastník</label>
-    <select id="owner"><option value="">Všetci</option></select>
+  <div class="left-col tree-tools">
+    <span class="flabel">Zákazníci</span>
+    <button type="button" class="iconbtn" id="treeExpand" title="Rozbaliť všetkých zákazníkov" aria-label="Rozbaliť všetkých zákazníkov">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5 5 5-5"></path><path d="m7 9 5-5 5 5"></path></svg>
+    </button>
+    <button type="button" class="iconbtn" id="treeCollapse" title="Zbaliť celý strom" aria-label="Zbaliť celý strom">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 20 5-5 5 5"></path><path d="m7 4 5 5 5-5"></path></svg>
+    </button>
   </div>
+  <button type="button" class="chip-select" id="ownerChip" aria-haspopup="listbox" aria-expanded="false" title="Vlastník súboru (kto ho vytvoril)">
+    <span>Vlastník:</span>
+    <span class="cs-value" id="ownerValue">Všetci</span>
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+  </button>
   <div class="fgroup" role="group" aria-label="Typ súboru">
     <span class="flabel">Typ</span>
     <div id="chips" class="chips"></div>
-    <button type="button" class="linkbtn" id="chipsAll">všetky</button>
+    <button type="button" class="linkbtn" id="chipsAll" title="Zapnúť všetky typy">všetky</button>
+    <span class="sep">|</span>
+    <button type="button" class="linkbtn" id="chipsNone" title="Vypnúť všetky typy – potom si naklikaj, ktoré chceš">žiadne</button>
   </div>
   <div class="seg" role="group" aria-label="Rozsah">
     <button type="button" data-scope="job" id="scopeJob">Aktuálna zákazka</button>
@@ -46,7 +56,6 @@
 
 <div class="layout">
   <nav class="tree-pane" aria-label="Zákazníci a zákazky">
-    <div class="pane-title">Zákazníci</div>
     <div id="tree" class="tree" role="tree"></div>
   </nav>
   <div class="resizer" data-pane="tree" title="Ťahaním zmeníš šírku"></div>
@@ -105,7 +114,20 @@
   </aside>
 </div>
 
+<footer class="statusbar">
+  <span id="stLeft"></span>
+  <span id="stRight"></span>
+</footer>
+
 <div class="toast" id="toast" role="alert" hidden></div>
+<div class="ctx" id="ctx" role="menu" hidden></div>
+<div class="dropdown" id="ownerDrop" hidden>
+  <div class="dd-search">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+    <input type="text" id="ownerFilter" placeholder="Hľadať meno…" autocomplete="off" spellcheck="false" aria-label="Hľadať vlastníka">
+  </div>
+  <div class="dd-list" id="ownerList" role="listbox"></div>
+</div>
 
 <script src="app.js"></script>
 </body>

@@ -8,6 +8,7 @@ Použitie:
 import argparse
 import fnmatch
 import hashlib
+import json
 import logging
 import logging.handlers
 import msvcrt
@@ -405,6 +406,21 @@ def publish(work: Path, target: Path, attempts: int = 30):
     return False
 
 
+def status_path(db_path: Path) -> Path:
+    return db_path.with_name("lupa_scan.json")
+
+
+def write_status(db_path: Path, res: dict):
+    """Malý súbor vedľa DB s časom posledného skenu – aktualizuje sa pri každom skene,
+    aj keď sa DB nepublikuje (bez zmien). Lupa z neho ukazuje „Posledný sken“."""
+    data = {"finished": time.time(), "errors": res["errors"], "full": res["full"],
+            "jobs": res["jobs"], "files": res["files"], "version": config.VERSION}
+    try:
+        status_path(db_path).write_text(json.dumps(data), encoding="utf-8")
+    except OSError as e:
+        log.warning("Stav skenu sa nedá zapísať: %s", e)
+
+
 def need_full(con) -> bool:
     """--auto: úplný sken, ak posledný úplný bol pred viac ako FULL_EVERY_DAYS dňami."""
     row = con.execute("SELECT MAX(finished) FROM scan_log WHERE mode = 'full'").fetchone()
@@ -480,6 +496,7 @@ def run_scan(root: str, db_path: Path, full=False, auto=False, only=None,
                 pending.unlink(missing_ok=True)
         else:
             log.info("Bez zmien – DB sa nepublikuje.")
+        write_status(db_path, res)
     except ScanError as e:
         log.error("%s", e)
         res.update(status="no_root", message=str(e))

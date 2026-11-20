@@ -1,4 +1,5 @@
 :root {
+  --tree-w: 270px;   /* šírka stromu – mení ťahanie; podľa nej sa zarovnáva hľadanie a filtre */
   --accent: #1d4ed8;
   --accent-soft: #eff6ff;
   --text: #1f2937;
@@ -31,22 +32,22 @@ button { font-family: inherit; cursor: pointer; }
 .topbar {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 12px 20px;
+  padding: 10px 20px 10px 0;
   background: #111827;
   color: #f9fafb;
   flex: none;
 }
+/* ľavý stĺpec hornej lišty a lišty filtrov = šírka stromu; zvyšok začína nad zoznamom súborov
+   (20 px = vnútorný okraj stredného panela) */
+.left-col { width: var(--tree-w); flex: none; padding-left: 16px; overflow: hidden; }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand-name { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
-.brand-root { font-size: 12px; color: #9ca3af; }
-.brand-ver { font-size: 11px; color: #6b7280; margin-left: -4px; }
-.scan-info { font-size: 12px; color: #9ca3af; white-space: nowrap; }
 .sr-only { position: absolute; left: -9999px; }
 
 .search {
   flex: 1;
   max-width: 720px;
+  margin: 0 16px 0 20px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -85,11 +86,45 @@ button { font-family: inherit; cursor: pointer; }
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 18px;
-  padding: 8px 20px;
+  gap: 6px 18px;
+  padding: 6px 20px 6px 0;
   background: #fff;
   border-bottom: 1px solid var(--line);
 }
+.filterbar .left-col + * { margin-left: 2px; }   /* 18 px medzera + 2 = 20 px ako zoznam */
+.tree-tools { display: flex; align-items: center; gap: 2px; padding-right: 8px; }
+.tree-tools .flabel { margin-right: auto; }
+.iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+}
+.iconbtn:hover { background: var(--line-soft); color: var(--text); }
+
+/* stavový riadok dole – nenápadný */
+.statusbar {
+  flex: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  height: 22px;
+  align-items: center;
+  padding: 0 12px 0 16px;
+  font-size: 11px;
+  color: #9ca3af;
+  background: #f9fafb;
+  border-top: 1px solid var(--line);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.statusbar .mono { font-size: 11px; }
+.statusbar .stale { color: #d97706; }
 .fgroup { display: flex; align-items: center; gap: 8px; }
 .flabel {
   font-size: 12px;
@@ -119,53 +154,148 @@ select {
   color: var(--muted-2);
 }
 .chip[aria-pressed="true"] { border-width: 2px; padding: 2px 7px; }
+.chip:hover { border-color: #9ca3af; }
+
+/* výber vlastníka v tvare štítku */
+.chip-select {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  height: 24px;
+  padding: 0 8px 0 10px;
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: var(--muted-2);
+  cursor: pointer;
+}
+.chip-select:hover { border-color: #9ca3af; }
+.chip-select.active { border: 2px solid var(--accent); padding: 0 7px 0 9px; background: var(--accent-soft); color: #1e3a8a; }
+.chip-select .cs-value { color: #111827; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-select svg { flex: none; color: var(--muted); transition: transform .12s; }
+.chip-select[aria-expanded="true"] svg { transform: rotate(180deg); }
+.chip-select[aria-expanded="true"] { border-color: #60a5fa; }
+
+/* rozbaľovacie menu v štýle Lupy (vlastník) */
+.dropdown {
+  position: fixed;
+  z-index: 50;
+  width: 240px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.16);
+  font-size: 13px;
+  overflow: hidden;
+}
+.dd-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px;
+  padding: 0 8px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+}
+.dd-search:focus-within { border-color: #60a5fa; }
+.dd-search input { flex: 1; min-width: 0; border: 0; outline: none; font: inherit; font-size: 12px; color: var(--text); background: transparent; }
+.dd-list { max-height: 320px; overflow-y: auto; padding: 0 4px 4px; }
+.dd-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 6px 8px;
+  border-radius: 5px;
+  text-align: left;
+  color: var(--text);
+}
+.dd-item .chk { width: 14px; flex: none; color: var(--accent); }
+.dd-item .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dd-item .cnt { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.dd-item.cur, .dd-item:hover { background: var(--line-soft); }
+.dd-item.sel { color: #1e3a8a; font-weight: 600; }
+.dd-item.sel .cnt { font-weight: 400; }
+.dd-sep { border-top: 1px solid var(--line); margin: 4px 4px; }
+.dd-empty { padding: 8px 10px; color: var(--muted); font-size: 12px; }
+
 .linkbtn {
   border: 0;
   background: none;
   color: var(--accent);
-  font-size: 13px;
-  padding: 4px;
+  font-size: 12px;
+  padding: 2px;
 }
 .linkbtn:hover { text-decoration: underline; }
+.sep { color: #d1d5db; font-size: 12px; margin: 0 -4px; }
+
+/* prepínače (rozsah, zoznam/galéria) – výška ako štítky */
 .seg {
   margin-left: auto;
   display: flex;
   background: var(--line-soft);
-  border-radius: 8px;
-  padding: 3px;
-  gap: 3px;
+  border-radius: 999px;
+  padding: 2px;
+  gap: 2px;
 }
 .seg button {
   border: 0;
-  border-radius: 6px;
-  padding: 5px 10px;
+  border-radius: 999px;
+  height: 22px;
+  padding: 0 11px;
   font-size: 12px;
   white-space: nowrap;
   font-weight: 600;
   background: transparent;
   color: var(--muted-2);
 }
-.seg button.on { background: #fff; color: #111827; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.seg button:hover:not(.on) { color: #111827; }
+.seg button.on { background: #fff; color: #111827; box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+
+/* kontextové menu stromu */
+.ctx {
+  position: fixed;
+  z-index: 50;
+  min-width: 200px;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.16);
+  font-size: 13px;
+}
+.ctx button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 6px 10px;
+  border-radius: 5px;
+  color: var(--text);
+}
+.ctx button:hover { background: var(--accent-soft); color: #1e3a8a; }
+.ctx hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
+.ctx .ctx-title { padding: 4px 10px 6px; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 280px; }
 mark { background: #fef08a; color: inherit; border-radius: 2px; }
 
 /* --- rozloženie --- */
 .layout { flex: 1; display: flex; min-height: 0; }
 
 .tree-pane {
-  width: 270px;
+  width: var(--tree-w);
   flex: none;
   background: #f9fafb;
   border-right: 1px solid var(--line);
   overflow: auto;
-  padding: 14px 8px;
-}
-.pane-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--muted-2);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 0 8px 8px;
+  padding: 8px 8px 14px;
 }
 
 .list-pane {
@@ -382,6 +512,7 @@ td.c-date, td.c-size { color: var(--muted-2); font-variant-numeric: tabular-nums
 /* --- galéria --- */
 .seg.dark { margin-left: 0; background: #1f2937; border: 1px solid #374151; }
 .seg.dark button { color: #d1d5db; }
+.seg.dark button:hover:not(.on) { color: #fff; }
 .seg.dark button.on { background: #3b82f6; color: #fff; box-shadow: none; }
 
 .gallery-wrap {

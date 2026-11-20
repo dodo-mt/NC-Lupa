@@ -9,3 +9,4 @@ build/
 vzorky/
 *.log
 *.spec
+lupa_scan.json*

@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 # Verzia aplikácie – zvyšovať pri každom vydaní (zobrazuje sa v UI, ikone skenu, logu a vo vlastnostiach exe)
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 # Priečinok programu (pri PyInstaller exe = priečinok s exe)
 if getattr(sys, "frozen", False):

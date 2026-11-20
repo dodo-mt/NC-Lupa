@@ -3,7 +3,9 @@
 Databázu otvára len na čítanie. Na disku so zákazkami nič nemení.
 """
 import base64
+import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -22,6 +24,7 @@ else:
 
 FILE_COLS = "f.id, f.name, f.ftype, f.path, f.size, f.created, f.modified, f.owner, p.rel_path AS folder"
 SEARCH_LIMIT = 2000  # max. počet riadkov vo výsledku
+STALE_HOURS = 24     # posledný sken starší → v stavovom riadku oranžovo
 
 
 def _like_escape(s: str) -> str:
@@ -68,6 +71,17 @@ class Api:
         key, label, bg, fg = config.OTHER_TYPE
         types.append({"key": key, "label": label, "bg": bg, "fg": fg})
         last = self._q("SELECT finished, mode, files_seen, errors FROM scan_log ORDER BY id DESC LIMIT 1")
+        # lupa_scan.json vedľa DB sa zapisuje pri každom skene (aj bez zmien) – presnejší čas
+        try:
+            st = json.loads(self._db_path.with_name("lupa_scan.json").read_text(encoding="utf-8"))
+            if not last or st.get("finished", 0) > last[0]["finished"]:
+                last = [{"finished": st["finished"], "errors": st.get("errors", 0)}]
+        except (OSError, ValueError, KeyError):
+            pass
+        counts = self._q(
+            "SELECT (SELECT COUNT(*) FROM customers) AS customers, (SELECT COUNT(*) FROM jobs) AS jobs,"
+            " (SELECT COUNT(*) FROM files) AS files"
+        )
         return {
             "version": config.VERSION,
             "completeness": [n for n, _t, _e in config.COMPLETENESS],
@@ -76,13 +90,15 @@ class Api:
             "db_ok": self._db_path.exists(),
             "types": types,
             "last_scan": last[0] if last else None,
+            "counts": counts[0] if counts else None,
+            "stale_hours": STALE_HOURS,
         }
 
     def get_tree(self) -> list[dict]:
         """Zákazníci so zákazkami (bez priečinkov – tie sa načítajú pri rozbalení)."""
-        customers = self._q("SELECT id, name FROM customers ORDER BY name COLLATE NOCASE")
+        customers = self._q("SELECT id, name, path FROM customers ORDER BY name COLLATE NOCASE")
         jobs = self._q(
-            "SELECT j.id, j.customer_id, j.name,"
+            "SELECT j.id, j.customer_id, j.name, j.path,"
             " (SELECT COUNT(*) FROM positions p WHERE p.job_id = j.id AND p.rel_path <> '') AS subdirs"
             " FROM jobs j ORDER BY j.name COLLATE NOCASE"
         )
@@ -110,6 +126,21 @@ class Api:
             (job_id,),
         )
 
+    def get_customer_positions(self, cust_id: int) -> dict:
+        """Priečinky všetkých zákaziek zákazníka naraz {job_id: [pozície]} – pre „Rozbaliť všetko“."""
+        rows = self._q(
+            "SELECT p.job_id, p.id, p.name, p.rel_path, p.path,"
+            " (SELECT COUNT(*) FROM files f WHERE f.position_id = p.id) AS files"
+            " FROM positions p JOIN jobs j ON j.id = p.job_id"
+            " WHERE j.customer_id = ? AND p.rel_path <> ''"
+            " ORDER BY p.rel_path COLLATE NOCASE",
+            (cust_id,),
+        )
+        out: dict[str, list] = {}
+        for r in rows:
+            out.setdefault(str(r.pop("job_id")), []).append(r)
+        return out
+
     def get_job(self, job_id: int) -> dict | None:
         rows = self._q(
             "SELECT j.id, j.name, j.path, c.name AS customer FROM jobs j"
@@ -127,23 +158,29 @@ class Api:
         """Hľadanie + filtre.
 
         params: q (text, slová sa AND-ujú), owner ('' = všetci), types (zoznam kľúčov,
-        prázdny/None = všetky), scope ('job' | 'all'), job_id, rel (priečinok v zákazke).
+        prázdny/None = všetky), scope ('job' = výber v strome | 'all'),
+        customer_id (vybraný zákazník), job_id, rel (priečinok v zákazke).
         """
         q = (params.get("q") or "").strip()
         owner = params.get("owner") or ""
         types = params.get("types")
         scope = params.get("scope") or "job"
+        cust_id = params.get("customer_id")
         job_id = params.get("job_id")
         rel = params.get("rel") or ""
 
         where: list[str] = []
         args: list = []
         if scope == "job":
-            if not job_id:
+            if not job_id and not cust_id:
                 return {"rows": [], "total": 0, "limit": SEARCH_LIMIT}
-            where.append("f.job_id = ?")
-            args.append(job_id)
-            if rel:
+            if not job_id:
+                where.append("f.customer_id = ?")
+                args.append(cust_id)
+            else:
+                where.append("f.job_id = ?")
+                args.append(job_id)
+            if job_id and rel:
                 where.append("(p.rel_path = ? OR p.rel_path LIKE ? ESCAPE '!')")
                 args += [rel, _like_escape(rel) + "\\%"]
         for term in q.split():
@@ -213,8 +250,9 @@ class Api:
             return {"ok": True}
         if folder:
             known = self._q(
-                "SELECT 1 FROM positions WHERE path = ? UNION SELECT 1 FROM jobs WHERE path = ?",
-                (folder, folder),
+                "SELECT 1 FROM positions WHERE path = ? UNION SELECT 1 FROM jobs WHERE path = ?"
+                " UNION SELECT 1 FROM customers WHERE path = ?",
+                (folder, folder, folder),
             )
             if not known or not os.path.isdir(folder):
                 return {"ok": False, "error": "Priečinok neexistuje."}
@@ -223,10 +261,25 @@ class Api:
         return {"ok": False, "error": "Nič na otvorenie."}
 
 
+WEB_STORAGE = config.LOCAL_DIR / "webview"
+
+
+def clear_web_cache(storage: Path = WEB_STORAGE):
+    """Zmaže HTTP cache WebView2 (nie localStorage s nastaveniami).
+
+    pywebview servíruje UI vždy z rovnakej adresy (127.0.0.1:42001), takže po aktualizácii
+    by WebView2 mohol použiť starý app.js / style.css z cache.
+    """
+    for sub in ("Cache", "Code Cache", "GPUCache"):
+        for base in storage.glob("EBWebView/*/"):
+            shutil.rmtree(base / sub, ignore_errors=True)
+
+
 def main():
+    clear_web_cache()
     api = Api(config.DB_PATH)
     window = webview.create_window(
-        "Lupa",
+        f"Lupa {config.VERSION}",
         str(UI_DIR / "index.html"),
         js_api=api,
         width=1440,
@@ -239,7 +292,7 @@ def main():
     webview.start(
         debug="--debug" in sys.argv,
         private_mode=False,
-        storage_path=str(config.LOCAL_DIR / "webview"),
+        storage_path=str(WEB_STORAGE),
     )
 
 
