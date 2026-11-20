@@ -5,26 +5,51 @@ const $ = (id) => document.getElementById(id);
 
 const state = {
   meta: null,
-  types: {},          // kľúč typu -> {bg, fg, label, order}
+  types: {},           // kľúč typu -> {bg, fg, label, order}
+  typeKeys: [],
   tree: [],
   openCust: new Set(),
   openJobs: new Set(),
   openDirs: new Set(), // "jobId|rel_path"
   positions: {},       // jobId -> [pozície]
-  sel: null,           // {job: id, rel: ''}
+  sel: null,           // vybraná zákazka/priečinok {job, rel}
+  // filtre
+  q: '',
+  owner: '',
+  typesOn: new Set(),
+  scope: 'job',        // 'job' | 'all'
+  // výsledok
   files: [],
+  total: 0,
+  limit: 0,
+  view: [],            // zoradené riadky, ako sú zobrazené
   sortKey: 'ftype',
   sortDir: 1,
-  selFile: null,       // id súboru
+  selFile: null,
 };
 
 let api;
+let reqSeq = 0;
 
 // --- pomocné ---------------------------------------------------------------
 const ICON_CHEVRON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>';
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Názov s vyznačenými hľadanými slovami
+function highlight(name) {
+  const terms = state.q.split(/\s+/).filter(Boolean);
+  if (!terms.length) return esc(name);
+  const re = new RegExp(terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'gi');
+  let out = '';
+  let last = 0;
+  for (const m of name.matchAll(re)) {
+    out += esc(name.slice(last, m.index)) + '<mark>' + esc(m[0]) + '</mark>';
+    last = m.index + m[0].length;
+  }
+  return out + esc(name.slice(last));
 }
 
 function fmtDate(ts) {
@@ -47,6 +72,12 @@ function badge(key) {
   return `<span class="badge" style="background:${t.bg};color:${t.fg}">${esc(key)}</span>`;
 }
 
+function plural(n) {
+  if (n === 1) return 'súbor';
+  if (n >= 2 && n <= 4) return 'súbory';
+  return 'súborov';
+}
+
 let toastTimer;
 function toast(msg) {
   const el = $('toast');
@@ -54,6 +85,11 @@ function toast(msg) {
   el.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { el.hidden = true; }, 5000);
+}
+
+function debounce(fn, ms) {
+  let t;
+  return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 }
 
 // --- strom -----------------------------------------------------------------
@@ -75,6 +111,10 @@ function buildDirTree(positions) {
   return root.children;
 }
 
+function isSelNode(jobId, rel) {
+  return state.scope === 'job' && state.sel && state.sel.job === jobId && state.sel.rel === rel;
+}
+
 function renderTree() {
   const out = [];
   for (const c of state.tree) {
@@ -84,8 +124,7 @@ function renderTree() {
     if (!open) continue;
     for (const j of c.jobs) {
       const jOpen = state.openJobs.has(j.id);
-      const sel = state.sel && state.sel.job === j.id && state.sel.rel === '';
-      out.push(`<div class="node job${jOpen ? ' open' : ''}${sel ? ' sel' : ''}" data-job="${j.id}" style="padding-left:22px">
+      out.push(`<div class="node job${jOpen ? ' open' : ''}${isSelNode(j.id, '') ? ' sel' : ''}" data-job="${j.id}" style="padding-left:22px">
         <span class="tw">${j.subdirs ? ICON_CHEVRON : ''}</span><span class="lbl">${esc(j.name)}</span></div>`);
       if (jOpen && state.positions[j.id]) renderDirs(out, j.id, buildDirTree(state.positions[j.id]), 2);
     }
@@ -95,13 +134,15 @@ function renderTree() {
 
 function renderDirs(out, jobId, nodes, depth) {
   for (const n of nodes) {
-    const key = `${jobId}|${n.rel_path}`;
-    const open = state.openDirs.has(key);
-    const sel = state.sel && state.sel.job === jobId && state.sel.rel === n.rel_path;
-    out.push(`<div class="node dir${open ? ' open' : ''}${sel ? ' sel' : ''}" data-job="${jobId}" data-rel="${esc(n.rel_path)}" style="padding-left:${6 + depth * 16}px">
+    const open = state.openDirs.has(`${jobId}|${n.rel_path}`);
+    out.push(`<div class="node dir${open ? ' open' : ''}${isSelNode(jobId, n.rel_path) ? ' sel' : ''}" data-job="${jobId}" data-rel="${esc(n.rel_path)}" style="padding-left:${6 + depth * 16}px">
       <span class="tw">${n.children.length ? ICON_CHEVRON : ''}</span><span class="lbl">${esc(n.name)}</span>${n.files ? `<span class="num">${n.files}</span>` : ''}</div>`);
     if (open) renderDirs(out, jobId, n.children, depth + 1);
   }
+}
+
+async function ensurePositions(jobId) {
+  if (!state.positions[jobId]) state.positions[jobId] = await api.get_positions(jobId);
 }
 
 async function onTreeClick(e) {
@@ -118,57 +159,136 @@ async function onTreeClick(e) {
 
   const jobId = Number(node.dataset.job);
   const rel = node.dataset.rel ?? '';
+  const isJob = node.classList.contains('job');
+  const set = isJob ? state.openJobs : state.openDirs;
+  const key = isJob ? jobId : `${jobId}|${rel}`;
 
-  if (node.classList.contains('job')) {
-    const wasOpen = state.openJobs.has(jobId);
-    const isSel = state.sel && state.sel.job === jobId && state.sel.rel === '';
-    // klik na šípku = len rozbaliť/zbaliť; klik na názov = vybrať (+ rozbaliť)
-    if (onTwisty || isSel) {
-      wasOpen ? state.openJobs.delete(jobId) : state.openJobs.add(jobId);
-    } else {
-      state.openJobs.add(jobId);
-    }
-    if (state.openJobs.has(jobId) && !state.positions[jobId]) {
-      state.positions[jobId] = await api.get_positions(jobId);
-    }
-    if (!onTwisty) await select(jobId, '');
-    renderTree();
-    return;
-  }
-
-  // priečinok
-  const key = `${jobId}|${rel}`;
-  const isSel = state.sel && state.sel.job === jobId && state.sel.rel === rel;
-  if (onTwisty || isSel) {
-    state.openDirs.has(key) ? state.openDirs.delete(key) : state.openDirs.add(key);
+  // klik na šípku = len rozbaliť/zbaliť; klik na názov = vybrať (+ rozbaliť), druhý klik zbalí
+  if (onTwisty || isSelNode(jobId, rel)) {
+    set.has(key) ? set.delete(key) : set.add(key);
   } else {
-    state.openDirs.add(key);
+    set.add(key);
   }
-  if (!onTwisty) await select(jobId, rel);
+  if (state.openJobs.has(jobId)) await ensurePositions(jobId);
+  if (!onTwisty) await selectNode(jobId, rel);
   renderTree();
 }
 
-// --- zoznam súborov --------------------------------------------------------
-async function select(jobId, rel) {
+// Vyberie zákazku/priečinok a prepne rozsah na „Aktuálna zákazka“
+async function selectNode(jobId, rel) {
   state.sel = { job: jobId, rel };
+  state.scope = 'job';
   state.selFile = null;
-  state.files = await api.get_files(jobId, rel);
+  renderScope();
+  await refresh();
+  $('tableWrap').scrollTop = 0;
+}
+
+// Z výsledku „Celé L:\“ skočí na zákazku v strome
+async function gotoJob(jobId, rel) {
   const f = findJob(jobId);
-  $('crumb').textContent = f ? `${f.cust.name} › ${f.job.name}${rel ? ' › ' + rel.split('\\').join(' › ') : ''}` : '';
-  $('heading').textContent = rel ? rel.split('\\').pop() : (f ? f.job.name : '');
+  if (!f) return;
+  state.openCust.add(f.cust.id);
+  state.openJobs.add(jobId);
+  await ensurePositions(jobId);
+  // rozbaliť cestu k priečinku
+  if (rel) {
+    const parts = rel.split('\\');
+    for (let i = 1; i < parts.length; i++) state.openDirs.add(`${jobId}|${parts.slice(0, i).join('\\')}`);
+  }
+  const keepFile = state.selFile;
+  await selectNode(jobId, rel || '');
+  renderTree();
+  const node = $('tree').querySelector('.node.sel');
+  if (node) node.scrollIntoView({ block: 'center' });
+  if (keepFile && state.files.some((x) => x.id === keepFile)) selectFile(keepFile, true);
+}
+
+// --- filtre ----------------------------------------------------------------
+function renderChips() {
+  $('chips').innerHTML = state.typeKeys.map((k) => {
+    const t = state.types[k];
+    const on = state.typesOn.has(k);
+    const style = on ? `background:${t.bg};color:${t.fg};border-color:${t.fg}` : '';
+    return `<button type="button" class="chip" data-type="${k}" aria-pressed="${on}" style="${style}" title="${esc(t.label)} – Ctrl+klik: len tento typ">${esc(k)}</button>`;
+  }).join('');
+}
+
+function renderScope() {
+  $('scopeJob').classList.toggle('on', state.scope === 'job');
+  $('scopeAll').classList.toggle('on', state.scope === 'all');
+}
+
+function selectedTypes() {
+  // všetky zapnuté = bez filtra
+  return state.typesOn.size === state.typeKeys.length ? null : [...state.typesOn];
+}
+
+// --- zoznam súborov --------------------------------------------------------
+async function refresh() {
+  const seq = ++reqSeq;
+  const types = selectedTypes();
+  let res;
+  if (types && types.length === 0) {
+    res = { rows: [], total: 0, limit: 0 };
+  } else {
+    res = await api.search({
+      q: state.q,
+      owner: state.owner,
+      types,
+      scope: state.scope,
+      job_id: state.sel ? state.sel.job : null,
+      rel: state.sel ? state.sel.rel : '',
+    });
+  }
+  if (seq !== reqSeq) return; // medzitým prišla novšia požiadavka
+  state.files = res.rows;
+  state.total = res.total;
+  state.limit = res.limit;
+  if (!state.files.some((x) => x.id === state.selFile)) state.selFile = null;
+  renderHead();
   renderFiles();
   renderDetail();
-  $('tableWrap').scrollTop = 0;
+}
+
+function renderHead() {
+  const all = state.scope === 'all';
+  const f = state.sel ? findJob(state.sel.job) : null;
+  let crumb = '';
+  let heading = '';
+  if (all) {
+    crumb = `Celé ${state.meta.root}`;
+    heading = state.q ? `Hľadanie „${state.q}“` : 'Všetky súbory';
+  } else if (f) {
+    const rel = state.sel.rel;
+    crumb = `${f.cust.name} › ${f.job.name}${rel ? ' › ' + rel.split('\\').join(' › ') : ''}`;
+    heading = rel ? rel.split('\\').pop() : f.job.name;
+  } else {
+    heading = 'Vyber zákazku';
+  }
+  $('crumb').textContent = crumb;
+  $('heading').textContent = heading;
+
+  const n = state.total;
+  let cnt = '';
+  if (all || state.sel) {
+    cnt = `${n} ${plural(n)}`;
+    if (n > state.files.length) cnt += ` · zobrazených ${state.files.length} najnovších`;
+  }
+  $('count').textContent = cnt;
+  document.querySelector('th.c-folder').textContent = all ? 'Zákazka / priečinok' : 'Priečinok';
 }
 
 function sortedFiles() {
   const k = state.sortKey;
   const dir = state.sortDir;
   const typeOrder = (t) => (state.types[t] ? state.types[t].order : 99);
+  const loc = (x) => (state.scope === 'all' ? `${x.job}\\${x.folder}` : x.folder);
   return [...state.files].sort((a, b) => {
     let r;
     if (k === 'ftype') r = typeOrder(a.ftype) - typeOrder(b.ftype);
     else if (k === 'size' || k === 'created' || k === 'modified') r = (a[k] || 0) - (b[k] || 0);
+    else if (k === 'folder') r = loc(a).localeCompare(loc(b), 'sk', { numeric: true, sensitivity: 'base' });
     else r = String(a[k] || '').localeCompare(String(b[k] || ''), 'sk', { numeric: true, sensitivity: 'base' });
     if (r === 0 && k !== 'name') r = a.name.localeCompare(b.name, 'sk', { numeric: true, sensitivity: 'base' });
     return r * dir;
@@ -178,27 +298,34 @@ function sortedFiles() {
 function renderFiles() {
   const files = sortedFiles();
   state.view = files;
-  $('rows').innerHTML = files.map((f) => `<tr data-id="${f.id}"${f.id === state.selFile ? ' class="sel"' : ''}>
+  const all = state.scope === 'all';
+  $('rows').innerHTML = files.map((f) => {
+    const loc = all ? (f.folder ? `${f.job} \\ ${f.folder}` : f.job) : f.folder;
+    const locTitle = all ? `${f.customer} \\ ${f.job}${f.folder ? ' \\ ' + f.folder : ''}` : f.folder;
+    return `<tr data-id="${f.id}"${f.id === state.selFile ? ' class="sel"' : ''}>
     <td class="c-type">${badge(f.ftype)}</td>
-    <td class="c-name" title="${esc(f.name)}">${esc(f.name)}</td>
-    <td class="c-folder" title="${esc(f.folder)}">${esc(f.folder)}</td>
+    <td class="c-name" title="${esc(f.name)}">${highlight(f.name)}</td>
+    <td class="c-folder" title="${esc(locTitle)}">${esc(loc)}</td>
     <td class="c-owner">${esc(f.owner)}</td>
     <td class="c-date">${fmtDate(f.created)}</td>
     <td class="c-date">${fmtDate(f.modified)}</td>
-    <td class="c-size">${fmtSize(f.size)}</td></tr>`).join('');
+    <td class="c-size">${fmtSize(f.size)}</td></tr>`;
+  }).join('');
+
+  let empty = '';
+  if (!files.length) {
+    if (state.scope === 'job' && !state.sel) empty = 'Vľavo vyber zákazku alebo prepni na „Celé L:\\“.';
+    else if (state.typesOn.size === 0) empty = 'Nie je zapnutý žiadny typ súboru.';
+    else if (state.q || state.owner || selectedTypes()) empty = 'Nič sa nenašlo. Skús zmeniť hľadanie alebo filtre.';
+    else empty = 'V tomto priečinku nie sú žiadne súbory.';
+  }
+  $('empty').textContent = empty;
   $('empty').hidden = !!files.length;
-  $('empty').textContent = state.sel ? 'V tomto priečinku nie sú žiadne súbory.' : 'Vľavo vyber zákazku alebo priečinok.';
-  $('count').textContent = state.sel ? `${files.length} ${plural(files.length)}` : '';
+
   for (const th of document.querySelectorAll('.files th')) {
     th.classList.toggle('asc', th.dataset.sort === state.sortKey && state.sortDir === 1);
     th.classList.toggle('desc', th.dataset.sort === state.sortKey && state.sortDir === -1);
   }
-}
-
-function plural(n) {
-  if (n === 1) return 'súbor';
-  if (n >= 2 && n <= 4) return 'súbory';
-  return 'súborov';
 }
 
 function selectFile(id, scroll) {
@@ -226,6 +353,8 @@ function renderDetail() {
       <div class="d-path">${esc(f.path)}</div>
     </div>
     <dl class="d-meta">
+      <dt>Zákazník</dt><dd>${esc(f.customer)}</dd>
+      <dt>Zákazka</dt><dd>${esc(f.job)}${f.folder ? ' \\ ' + esc(f.folder) : ''}</dd>
       <dt>Vlastník</dt><dd><strong>${esc(f.owner)}</strong></dd>
       <dt>Vytvorený</dt><dd>${fmtDate(f.created)}</dd>
       <dt>Zmenený</dt><dd>${fmtDate(f.modified)}</dd>
@@ -234,9 +363,11 @@ function renderDetail() {
     <div class="d-btns">
       <button type="button" class="btn primary" id="btnOpen">Otvoriť</button>
       <button type="button" class="btn" id="btnFolder">Otvoriť priečinok</button>
+      ${state.scope === 'all' ? '<button type="button" class="btn" id="btnGoto" style="flex-basis:100%">Prejsť na zákazku</button>' : ''}
     </div>`;
   $('btnOpen').onclick = () => openFile(f.id);
   $('btnFolder').onclick = () => openFolder(f.id);
+  if ($('btnGoto')) $('btnGoto').onclick = () => gotoJob(f.job_id, f.folder);
 }
 
 async function openFile(id) {
@@ -253,6 +384,50 @@ async function openFolder(id) {
 function bind() {
   $('tree').addEventListener('click', onTreeClick);
 
+  // hľadanie
+  const runSearch = debounce(() => refresh(), 200);
+  $('q').addEventListener('input', () => {
+    state.q = $('q').value.trim();
+    $('qClear').hidden = !$('q').value;
+    runSearch();
+  });
+  $('q').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') clearSearch();
+  });
+  $('qClear').addEventListener('click', () => { clearSearch(); $('q').focus(); });
+
+  // filtre
+  $('owner').addEventListener('change', () => { state.owner = $('owner').value; refresh(); });
+  $('chips').addEventListener('click', (e) => {
+    const b = e.target.closest('.chip');
+    if (!b) return;
+    const k = b.dataset.type;
+    if (e.ctrlKey) {
+      state.typesOn = new Set([k]);
+    } else if (state.typesOn.has(k)) {
+      state.typesOn.delete(k);
+    } else {
+      state.typesOn.add(k);
+    }
+    renderChips();
+    refresh();
+  });
+  $('chipsAll').addEventListener('click', () => {
+    state.typesOn = new Set(state.typeKeys);
+    renderChips();
+    refresh();
+  });
+  for (const b of document.querySelectorAll('.seg button')) {
+    b.addEventListener('click', () => {
+      if (state.scope === b.dataset.scope) return;
+      state.scope = b.dataset.scope;
+      renderScope();
+      renderTree();
+      refresh();
+    });
+  }
+
+  // zoznam
   $('rows').addEventListener('click', (e) => {
     const tr = e.target.closest('tr');
     if (tr) selectFile(Number(tr.dataset.id));
@@ -261,7 +436,6 @@ function bind() {
     const tr = e.target.closest('tr');
     if (tr) openFile(Number(tr.dataset.id));
   });
-
   document.querySelector('.files thead').addEventListener('click', (e) => {
     const th = e.target.closest('th');
     if (!th) return;
@@ -271,9 +445,16 @@ function bind() {
     renderFiles();
   });
 
-  // šípky hore/dole v zozname, Enter = otvoriť
+  // klávesnica: Ctrl+F = hľadanie, šípky = pohyb v zozname, Enter = otvoriť
   document.addEventListener('keydown', (e) => {
-    if (!state.view || !state.view.length) return;
+    if (e.ctrlKey && (e.key === 'f' || e.key === 'F')) {
+      e.preventDefault();
+      $('q').focus();
+      $('q').select();
+      return;
+    }
+    if (e.target.tagName === 'SELECT') return;
+    if (!state.view.length) return;
     const i = state.view.findIndex((f) => f.id === state.selFile);
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
@@ -285,24 +466,41 @@ function bind() {
   });
 }
 
+function clearSearch() {
+  $('q').value = '';
+  $('qClear').hidden = true;
+  if (state.q) { state.q = ''; refresh(); }
+}
+
 async function init() {
   api = window.pywebview.api;
   const meta = await api.get_meta();
   state.meta = meta;
   meta.types.forEach((t, i) => { state.types[t.key] = { ...t, order: i }; });
+  state.typeKeys = meta.types.map((t) => t.key);
+  state.typesOn = new Set(state.typeKeys);
   $('root').textContent = meta.root;
+  $('scopeAll').textContent = `Celé ${meta.root}`;
+  renderChips();
+  renderScope();
   if (!meta.db_ok) {
     $('scanInfo').textContent = 'Databáza neexistuje';
-    $('empty').textContent = `Databáza sa nenašla: ${meta.db}\nSpusti najprv scanner.py.`;
+    $('empty').textContent = `Databáza sa nenašla: ${meta.db} – spusti najprv scanner.py.`;
     return;
   }
   if (meta.last_scan) {
     const s = meta.last_scan;
     $('scanInfo').textContent = `Sken: ${fmtDate(s.finished)}${s.errors ? ` · chyby ${s.errors}` : ''}`;
   }
+  const owners = await api.get_owners();
+  $('owner').insertAdjacentHTML('beforeend',
+    owners.map((o) => `<option value="${esc(o.owner)}">${esc(o.owner)} (${o.n})</option>`).join(''));
   state.tree = await api.get_tree();
   if (state.tree.length === 1) state.openCust.add(state.tree[0].id);
   renderTree();
+  renderHead();
+  renderFiles();
+  $('q').focus();
 }
 
 bind();

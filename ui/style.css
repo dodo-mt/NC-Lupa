@@ -40,8 +40,110 @@ button { font-family: inherit; cursor: pointer; }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand-name { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
 .brand-root { font-size: 12px; color: #9ca3af; }
-.spacer { flex: 1; }
-.scan-info { font-size: 12px; color: #9ca3af; }
+.scan-info { font-size: 12px; color: #9ca3af; white-space: nowrap; }
+.sr-only { position: absolute; left: -9999px; }
+
+.search {
+  flex: 1;
+  max-width: 720px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #1f2937;
+  border: 1px solid #374151;
+  border-radius: 8px;
+  padding: 0 8px 0 12px;
+  min-height: 38px;
+}
+.search:focus-within { border-color: #60a5fa; }
+.search input {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: #f9fafb;
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 0;
+}
+.search input::placeholder { color: #9ca3af; }
+.search-clear {
+  display: inline-flex;
+  border: 0;
+  background: transparent;
+  color: #9ca3af;
+  padding: 4px;
+  border-radius: 4px;
+}
+.search-clear:hover { color: #fff; background: #374151; }
+
+/* --- lišta filtrov --- */
+.filterbar {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 22px;
+  padding: 10px 20px;
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+}
+.fgroup { display: flex; align-items: center; gap: 8px; }
+.flabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+select {
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  min-height: 34px;
+  min-width: 140px;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: var(--muted-2);
+}
+.chip[aria-pressed="true"] { border-width: 2px; padding: 4px 10px; }
+.linkbtn {
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 13px;
+  padding: 4px;
+}
+.linkbtn:hover { text-decoration: underline; }
+.seg {
+  margin-left: auto;
+  display: flex;
+  background: var(--line-soft);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 3px;
+}
+.seg button {
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  background: transparent;
+  color: var(--muted-2);
+}
+.seg button.on { background: #fff; color: #111827; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+mark { background: #fef08a; color: inherit; border-radius: 2px; }
 
 /* --- rozloženie --- */
 .layout { flex: 1; display: flex; min-height: 0; }

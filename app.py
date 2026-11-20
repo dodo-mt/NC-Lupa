@@ -19,6 +19,11 @@ else:
     UI_DIR = Path(__file__).resolve().parent / "ui"
 
 FILE_COLS = "f.id, f.name, f.ftype, f.path, f.size, f.created, f.modified, f.owner, p.rel_path AS folder"
+SEARCH_LIMIT = 2000  # max. počet riadkov vo výsledku
+
+
+def _like_escape(s: str) -> str:
+    return s.replace("!", "!!").replace("%", "!%").replace("_", "!_")
 
 
 class Api:
@@ -88,18 +93,56 @@ class Api:
         )
         return rows[0] if rows else None
 
-    def get_files(self, job_id: int, rel_path: str = "") -> list[dict]:
-        """Súbory zákazky; ak je zadaný priečinok, tak len z neho a jeho podpriečinkov."""
-        sql = (
-            f"SELECT {FILE_COLS} FROM files f JOIN positions p ON p.id = f.position_id"
-            " WHERE f.job_id = ?"
+    def get_owners(self) -> list[dict]:
+        return self._q(
+            "SELECT owner, COUNT(*) AS n FROM files GROUP BY owner ORDER BY owner COLLATE NOCASE"
         )
-        args: list = [job_id]
-        if rel_path:
-            sql += " AND (p.rel_path = ? OR p.rel_path LIKE ? ESCAPE '!')"
-            esc = rel_path.replace("!", "!!").replace("%", "!%").replace("_", "!_")
-            args += [rel_path, esc + "\\%"]
-        return self._q(sql, args)
+
+    def search(self, params: dict) -> dict:
+        """Hľadanie + filtre.
+
+        params: q (text, slová sa AND-ujú), owner ('' = všetci), types (zoznam kľúčov,
+        prázdny/None = všetky), scope ('job' | 'all'), job_id, rel (priečinok v zákazke).
+        """
+        q = (params.get("q") or "").strip()
+        owner = params.get("owner") or ""
+        types = params.get("types")
+        scope = params.get("scope") or "job"
+        job_id = params.get("job_id")
+        rel = params.get("rel") or ""
+
+        where: list[str] = []
+        args: list = []
+        if scope == "job":
+            if not job_id:
+                return {"rows": [], "total": 0, "limit": SEARCH_LIMIT}
+            where.append("f.job_id = ?")
+            args.append(job_id)
+            if rel:
+                where.append("(p.rel_path = ? OR p.rel_path LIKE ? ESCAPE '!')")
+                args += [rel, _like_escape(rel) + "\\%"]
+        for term in q.split():
+            where.append("f.name LIKE ? ESCAPE '!'")
+            args.append(f"%{_like_escape(term)}%")
+        if owner:
+            where.append("f.owner = ?")
+            args.append(owner)
+        if types:
+            where.append(f"f.ftype IN ({','.join('?' * len(types))})")
+            args += list(types)
+
+        base = (
+            " FROM files f JOIN positions p ON p.id = f.position_id"
+            " JOIN jobs j ON j.id = f.job_id JOIN customers c ON c.id = f.customer_id"
+            + (" WHERE " + " AND ".join(where) if where else "")
+        )
+        total = self._q("SELECT COUNT(*) AS n" + base, args)
+        rows = self._q(
+            f"SELECT {FILE_COLS}, f.job_id, j.name AS job, c.name AS customer"
+            + base + " ORDER BY f.modified DESC LIMIT ?",
+            args + [SEARCH_LIMIT],
+        )
+        return {"rows": rows, "total": total[0]["n"] if total else 0, "limit": SEARCH_LIMIT}
 
     # --- akcie -------------------------------------------------------------
     def _known_file(self, file_id: int) -> str | None:

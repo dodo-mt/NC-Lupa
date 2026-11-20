@@ -12,9 +12,32 @@
     <span class="brand-name">Lupa</span>
     <span class="brand-root mono" id="root"></span>
   </div>
-  <div class="spacer"></div>
+  <div class="search">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+    <label for="q" class="sr-only">Hľadať</label>
+    <input id="q" type="text" autocomplete="off" spellcheck="false" placeholder="Číslo výkresu, názov súboru…  (Ctrl+F)">
+    <button type="button" class="search-clear" id="qClear" aria-label="Vymazať hľadanie" hidden>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+    </button>
+  </div>
   <span class="scan-info" id="scanInfo"></span>
 </header>
+
+<div class="filterbar">
+  <div class="fgroup">
+    <label for="owner" class="flabel">Vlastník</label>
+    <select id="owner"><option value="">Všetci</option></select>
+  </div>
+  <div class="fgroup" role="group" aria-label="Typ súboru">
+    <span class="flabel">Typ</span>
+    <div id="chips" class="chips"></div>
+    <button type="button" class="linkbtn" id="chipsAll">všetky</button>
+  </div>
+  <div class="seg" role="group" aria-label="Rozsah">
+    <button type="button" data-scope="job" id="scopeJob">Aktuálna zákazka</button>
+    <button type="button" data-scope="all" id="scopeAll">Celé L:\</button>
+  </div>
+</div>
 
 <div class="layout">
   <nav class="tree-pane" aria-label="Zákazníci a zákazky">
