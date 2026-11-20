@@ -156,6 +156,11 @@ class Scanner:
         mode = ("full" if self.full else "incr") + (f" only={self.only}" if self.only else "")
         log.info("Sken %s, koreň %s (Lupa v%s)", mode, self.root, config.VERSION)
 
+        fixed = self.fix_types()
+        if fixed:
+            log.info("Typ súboru opravený podľa config.py: %d súborov", fixed)
+            self.changed = True
+
         known = {row[0]: row[1] for row in self.con.execute("SELECT path, id FROM customers")}
         seen = set()
         found_only = False
@@ -222,6 +227,18 @@ class Scanner:
             finished - started, self.jobs_scanned, self.jobs_changed, self.jobs_skipped,
             self.files_seen, self.errors,
         )
+
+    def fix_types(self) -> int:
+        """Typ súborov v DB podľa aktuálneho mapovania v config.py (napr. po rozdelení XLS/DOC)
+        – netreba úplný sken. Vracia počet opravených súborov."""
+        n = 0
+        for ext, ftype in self.con.execute("SELECT DISTINCT ext, ftype FROM files").fetchall():
+            want = config.ftype_for_ext(ext)
+            if want != ftype:
+                n += self.con.execute("UPDATE files SET ftype = ? WHERE ext = ? AND ftype = ?",
+                                      (want, ext, ftype)).rowcount
+        self.con.commit()
+        return n
 
     def is_customer(self, name: str) -> bool:
         low = name.lower()

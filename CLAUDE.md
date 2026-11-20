@@ -37,7 +37,8 @@ L:\<Zákazník>\<Zákazka>\[voliteľne 1+ medziúrovne: pozícia / číslo / tex
 | HMC – hyperMILL | .hmc | #ffedd5 / #7c2d12 |
 | PPF – hyperMILL | .ppf | #fef3c7 / #78350f |
 | NC – programy | .h .nc .mpf .spf | #dcfce7 / #14532d |
-| XLS – listy | .xlsx .xls .doc .docx | #ccfbf1 / #134e4a |
+| XLS – Excel (listy) | .xlsx .xls | #ccfbf1 / #134e4a |
+| DOC – Word | .doc .docx | #e0e7ff / #312e81 |
 | CREO – Creo | .prt.N .drw.N .asm.N (N = verzia, berie sa len najvyššia v priečinku) | #f9ded3 / #8a3517 |
 | DWG – AutoCAD | .dwg .dxf | #ede9fe / #4c1d95 |
 | STL – sieťový model | .stl | #e0f2fe / #0c4a6e |
@@ -111,10 +112,10 @@ prints(path, size, modified, version, views)   -- odtlačky PDF, views = odtlack
 - Hľadanie podľa časti názvu: `LIKE '%…%'` (pri raste zvážiť FTS5).
 - Odhad veľkosti: ~150 000 súborov → desiatky MB.
 
-## Stav projektu (aktuálne 1.3.0)
+## Stav projektu (aktuálne 1.3.1)
 
 Hotové: verzia 1 (nižšie) + náhľady, galéria, NC/TXT náhľad, kontrola úplnosti, exe, ikona skenu
-pri hodinách, stavový riadok, kontextové menu stromu. Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`, `v1.3.0`.
+pri hodinách, stavový riadok, kontextové menu stromu. Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`, `v1.3.0`, `v1.3.1`.
 
 **Čaká sa na používateľa**: nasadenie `dist\Lupa\` na `L:\_Lupa\`, `ikona_skenu.bat`, prvý úplný sken
 celého `L:\`. Potom overiť: trvanie skenu, či vlastníci = ozajstné mená kolegov, chyby v logu.

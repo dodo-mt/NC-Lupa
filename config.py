@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 # Verzia aplikácie – zvyšovať pri každom vydaní (zobrazuje sa v UI, ikone skenu, logu a vo vlastnostiach exe)
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 
 # Priečinok programu (pri PyInstaller exe = priečinok s exe)
 if getattr(sys, "frozen", False):
@@ -91,7 +91,8 @@ FILE_TYPES = {
     "HMC": ("hyperMILL", ["hmc"], "#ffedd5", "#7c2d12"),
     "PPF": ("hyperMILL", ["ppf"], "#fef3c7", "#78350f"),
     "NC": ("NC program", ["h", "nc", "mpf", "spf"], "#dcfce7", "#14532d"),
-    "XLS": ("Listy", ["xlsx", "xls", "doc", "docx"], "#ccfbf1", "#134e4a"),
+    "XLS": ("Excel", ["xlsx", "xls"], "#ccfbf1", "#134e4a"),
+    "DOC": ("Word", ["doc", "docx"], "#e0e7ff", "#312e81"),
     "CREO": ("Creo", ["prt", "drw", "asm"], "#f9ded3", "#8a3517"),
     "DWG": ("AutoCAD", ["dwg", "dxf"], "#ede9fe", "#4c1d95"),
     "STL": ("Sieťový model", ["stl"], "#e0f2fe", "#0c4a6e"),
@@ -105,7 +106,7 @@ COMPLETENESS = [
     ("PDF", ["PDF"], []),
     ("CAM", ["HMC", "PPF"], []),
     ("NC", ["NC"], []),
-    ("Listy", ["XLS"], []),
+    ("Listy", ["XLS", "DOC"], []),
 ]
 
 
