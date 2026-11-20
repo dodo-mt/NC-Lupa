@@ -124,6 +124,29 @@ function buildDirTree(positions) {
   return root.children;
 }
 
+// --- úplnosť ---------------------------------------------------------------
+// missing = názvy chýbajúcich položiek (počíta Python podľa config.COMPLETENESS)
+function complCheck(missing) {
+  return state.meta.completeness.map((name) => ({ name, ok: !missing.includes(name) }));
+}
+
+function complStatus(miss) {
+  if (!miss.length) return '<span class="st ok" title="Úplné">úplné</span>';
+  const txt = miss.length === 1 ? `chýba ${miss[0]}` : `chýba ${miss.length}`;
+  return `<span class="st miss" title="Chýba: ${esc(miss.join(', '))}">${esc(txt)}</span>`;
+}
+
+// Úplnosť sa ukazuje vždy za celú zákazku – aj pri vybranom podpriečinku
+// (model a výkres bývajú v koreni zákazky, NC v podpriečinkoch pozícií).
+function renderCompl() {
+  const box = $('compl');
+  const f = state.scope === 'job' && state.sel ? findJob(state.sel.job) : null;
+  if (!f) { box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = complCheck(f.job.missing).map((c) =>
+    `<span class="${c.ok ? 'y' : 'n'}" title="${c.ok ? 'Je' : 'Chýba'}">${c.ok ? '✓' : '✗'} ${esc(c.name)}</span>`).join('');
+}
+
 function isSelNode(jobId, rel) {
   return state.scope === 'job' && state.sel && state.sel.job === jobId && state.sel.rel === rel;
 }
@@ -138,7 +161,7 @@ function renderTree() {
     for (const j of c.jobs) {
       const jOpen = state.openJobs.has(j.id);
       out.push(`<div class="node job${jOpen ? ' open' : ''}${isSelNode(j.id, '') ? ' sel' : ''}" data-job="${j.id}" style="padding-left:22px">
-        <span class="tw">${j.subdirs ? ICON_CHEVRON : ''}</span><span class="lbl">${esc(j.name)}</span></div>`);
+        <span class="tw">${j.subdirs ? ICON_CHEVRON : ''}</span><span class="lbl">${esc(j.name)}</span>${complStatus(j.missing)}</div>`);
       if (jOpen && state.positions[j.id]) renderDirs(out, j.id, buildDirTree(state.positions[j.id]), 2);
     }
   }
@@ -272,16 +295,18 @@ function renderHead() {
   let heading = '';
   if (all) {
     crumb = `Celé ${state.meta.root}`;
-    heading = state.q ? `Hľadanie „${state.q}“` : 'Všetky súbory';
+    heading = esc(state.q ? `Hľadanie „${state.q}“` : 'Všetky súbory');
   } else if (f) {
+    // nadpis = zákazka, podpriečinok menším sivým písmom za lomkou
     const rel = state.sel.rel;
-    crumb = `${f.cust.name} › ${f.job.name}${rel ? ' › ' + rel.split('\\').join(' › ') : ''}`;
-    heading = rel ? rel.split('\\').pop() : f.job.name;
+    crumb = f.cust.name;
+    heading = esc(f.job.name) + (rel ? `<span class="h-sub"> / ${esc(rel.split('\\').join(' \\ '))}</span>` : '');
   } else {
     heading = 'Vyber zákazku';
   }
   $('crumb').textContent = crumb;
-  $('heading').textContent = heading;
+  $('heading').innerHTML = heading;
+  renderCompl();
 
   const n = state.total;
   let cnt = '';
@@ -785,7 +810,10 @@ async function init() {
   state.typeKeys = meta.types.map((t) => t.key);
   state.typesOn = new Set(state.typeKeys);
   $('root').textContent = meta.root;
-  $('scopeAll').textContent = `Celé ${meta.root}`;
+  // na tlačidle krátko (L:\ ostane L:\, dlhá cesta = posledný priečinok), celá cesta v bublinke
+  const root = meta.root.replace(/[\\/]+$/, '');
+  $('scopeAll').textContent = `Celé ${root.length <= 3 ? meta.root : root.split(/[\\/]/).pop()}`;
+  $('scopeAll').title = `Hľadať v celom ${meta.root}`;
   renderChips();
   renderScope();
   setCardSize(Number(lsGet('lupa.card', 220)));

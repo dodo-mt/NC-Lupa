@@ -67,6 +67,7 @@ class Api:
         types.append({"key": key, "label": label, "bg": bg, "fg": fg})
         last = self._q("SELECT finished, mode, files_seen, errors FROM scan_log ORDER BY id DESC LIMIT 1")
         return {
+            "completeness": [n for n, _t, _e in config.COMPLETENESS],
             "root": str(config.ROOT),
             "db": str(self._db_path),
             "db_ok": self._con is not None,
@@ -82,8 +83,15 @@ class Api:
             " (SELECT COUNT(*) FROM positions p WHERE p.job_id = j.id AND p.rel_path <> '') AS subdirs"
             " FROM jobs j ORDER BY j.name COLLATE NOCASE"
         )
+        # kontrola úplnosti: typy a prípony súborov v každej zákazke
+        jtypes: dict[int, set] = {}
+        jexts: dict[int, set] = {}
+        for r in self._q("SELECT job_id, ftype, ext FROM files GROUP BY job_id, ftype, ext"):
+            jtypes.setdefault(r["job_id"], set()).add(r["ftype"])
+            jexts.setdefault(r["job_id"], set()).add(r["ext"])
         by_cust: dict[int, list] = {}
         for j in jobs:
+            j["missing"] = config.missing_parts(jtypes.get(j["id"], set()), jexts.get(j["id"], set()))
             by_cust.setdefault(j.pop("customer_id"), []).append(j)
         for c in customers:
             c["jobs"] = by_cust.get(c["id"], [])

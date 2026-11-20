@@ -40,6 +40,9 @@ L:\<Zákazník>\<Zákazka>\[voliteľne 1+ medziúrovne: pozícia / číslo / tex
 | XLS – listy | .xlsx .xls .doc .docx | #ccfbf1 / #134e4a |
 | CREO – Creo | .prt.N .drw.N .asm.N (N = verzia, berie sa len najvyššia v priečinku) | #f9ded3 / #8a3517 |
 | DWG – AutoCAD | .dwg .dxf | #ede9fe / #4c1d95 |
+| STL – sieťový model | .stl | #e0f2fe / #0c4a6e |
+| TIF – obrázok / sken | .tif .tiff | #fce7f3 / #831843 |
+| TXT – poznámky | .txt (náhľad ako text) | #ecfccb / #365314 |
 | Ostatné | * | #f3f4f6 / #374151 |
 
 Mapovanie drž na jednom mieste (`config.py`), aby sa dalo ľahko rozšíriť.

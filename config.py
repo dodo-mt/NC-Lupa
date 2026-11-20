@@ -58,7 +58,27 @@ FILE_TYPES = {
     "XLS": ("Listy", ["xlsx", "xls", "doc", "docx"], "#ccfbf1", "#134e4a"),
     "CREO": ("Creo", ["prt", "drw", "asm"], "#f9ded3", "#8a3517"),
     "DWG": ("AutoCAD", ["dwg", "dxf"], "#ede9fe", "#4c1d95"),
+    "STL": ("Sieťový model", ["stl"], "#e0f2fe", "#0c4a6e"),
+    "TIF": ("Obrázok / sken", ["tif", "tiff"], "#fce7f3", "#831843"),
+    "TXT": ("Poznámky", ["txt"], "#ecfccb", "#365314"),
 }
+
+# Kontrola úplnosti zákazky: (názov, typy, prípony) – stačí ktorýkoľvek typ alebo prípona
+COMPLETENESS = [
+    ("Model", ["STP", "CREO"], ["catpart"]),
+    ("PDF", ["PDF"], []),
+    ("CAM", ["HMC", "PPF"], []),
+    ("NC", ["NC"], []),
+    ("Listy", ["XLS"], []),
+]
+
+
+def missing_parts(ftypes: set, exts: set) -> list[str]:
+    """Názvy položiek úplnosti, ktoré v zákazke chýbajú."""
+    return [
+        name for name, types, ex in COMPLETENESS
+        if not (ftypes & set(types) or exts & set(ex))
+    ]
 
 # Prípony s číslom verzie na konci (Creo: 612234.prt.5, drw0001.drw.2).
 # Skener z nich berie len najvyššiu verziu v priečinku, ext sa ukladá bez verzie.
