@@ -83,4 +83,6 @@ IGNORE_ROOT_DIRS = {"_lupa", "$recycle.bin", "system volume information"}
 # Konkrétne názvy súborov
 IGNORE_FILES = {"thumbs.db", "desktop.ini"}
 # Prípony súborov
-IGNORE_EXTS = {"bak", "hmc_bak", "hypermill", "dwl", "dwl2", "log", "tmp"}
+IGNORE_EXTS = {"bak", "hmc_bak", "hypermill", "dwl", "dwl2", "log", "tmp", "out"}
+# Vzory názvov (fnmatch, malými písmenami) – logy z exportu Creo a pod.
+IGNORE_GLOBS = ["*.log.*", "*_log.xml"]

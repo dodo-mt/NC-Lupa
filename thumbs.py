@@ -16,8 +16,8 @@ import config
 
 log = logging.getLogger("lupa.thumbs")
 
-PDF_WIDTH = 1000    # šírka náhľadu PDF v px (panel má ~360 px, rezerva pre HiDPI a galériu)
-SHELL_SIZE = 512    # požadovaná veľkosť náhľadu z Windows
+# Veľkosti náhľadov v px: 'l' = detail (panel až ~1100 px), 's' = galéria (karta do ~400 px)
+SIZES = {"l": 1000, "s": 500}
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +96,7 @@ def _hbitmap_to_pixmap(hbm) -> pymupdf.Pixmap:
     return pymupdf.Pixmap(pymupdf.csRGB, w, h, bytes(rgba), True)
 
 
-def _shell_image(path: str, flags: int) -> pymupdf.Pixmap:
+def _shell_image(path: str, flags: int, px: int) -> pymupdf.Pixmap:
     _ole32.CoInitializeEx(None, 2)  # COINIT_APARTMENTTHREADED; opakované volanie nevadí
     item = ctypes.c_void_p()
     _shell32.SHCreateItemFromParsingName(path, None, ctypes.byref(_IID_IShellItemImageFactory),
@@ -106,7 +106,7 @@ def _shell_image(path: str, flags: int) -> pymupdf.Pixmap:
                            ctypes.POINTER(ctypes.c_void_p))
         get_image = _GetImage(vtbl[3])
         hbm = wintypes.HBITMAP()
-        get_image(item, _SIZE(SHELL_SIZE, SHELL_SIZE), flags, ctypes.byref(hbm))
+        get_image(item, _SIZE(px, px), flags, ctypes.byref(hbm))
         try:
             return _hbitmap_to_pixmap(hbm)
         finally:
@@ -118,15 +118,15 @@ def _shell_image(path: str, flags: int) -> pymupdf.Pixmap:
 # ---------------------------------------------------------------------------
 # Verejné API
 # ---------------------------------------------------------------------------
-def _cache_path(path: str, st: os.stat_result) -> Path:
-    key = f"{path.lower()}|{st.st_mtime_ns}|{st.st_size}|v1"
+def _cache_path(path: str, st: os.stat_result, px: int) -> Path:
+    key = f"{path.lower()}|{st.st_mtime_ns}|{st.st_size}|{px}|v2"
     return config.THUMBS_DIR / (hashlib.sha1(key.encode("utf-8")).hexdigest() + ".png")
 
 
-def _render_pdf(path: str) -> tuple[pymupdf.Pixmap, int]:
+def _render_pdf(path: str, px: int) -> tuple[pymupdf.Pixmap, int]:
     with pymupdf.open(path) as doc:
         page = doc[0]
-        zoom = min(PDF_WIDTH / max(page.rect.width, 1), 4.0)
+        zoom = min(px / max(page.rect.width, 1), 4.0)
         return page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False), doc.page_count
 
 
@@ -135,33 +135,38 @@ TEXT_MAX_BYTES = 64 * 1024
 TEXT_MAX_LINES = 200
 
 
-def get_text(path: str) -> dict:
+def get_text(path: str, max_lines: int = TEXT_MAX_LINES) -> dict:
     """Začiatok textového súboru (NC program, txt) – {'ok', 'kind': 'text', 'text', 'more'}."""
+    max_bytes = min(TEXT_MAX_BYTES, max_lines * 200)
     try:
         with open(path, "rb") as f:
-            raw = f.read(TEXT_MAX_BYTES + 1)
+            raw = f.read(max_bytes + 1)
     except OSError:
         return {"ok": False, "error": "Súbor sa nedá prečítať."}
-    more = len(raw) > TEXT_MAX_BYTES
-    raw = raw[:TEXT_MAX_BYTES]
+    more = len(raw) > max_bytes
+    raw = raw[:max_bytes]
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
         text = raw.decode("cp1250", errors="replace")
     lines = text.splitlines()
-    if len(lines) > TEXT_MAX_LINES:
-        lines, more = lines[:TEXT_MAX_LINES], True
+    if len(lines) > max_lines:
+        lines, more = lines[:max_lines], True
     return {"ok": True, "kind": "text", "text": "\n".join(lines), "more": more}
 
 
-def get_thumb(path: str, ftype: str) -> dict:
-    """Vráti {'ok', 'file' (PNG v cache), 'kind': 'pdf'|'shell'|'icon', 'pages'} alebo {'ok': False, 'error'}."""
+def get_thumb(path: str, ftype: str, size: str = "l") -> dict:
+    """Vráti {'ok', 'file' (PNG v cache), 'kind': 'pdf'|'shell'|'icon', 'pages'} alebo {'ok': False, 'error'}.
+
+    size: 'l' = detail, 's' = galéria (menší, rýchlejší).
+    """
+    px = SIZES.get(size, SIZES["l"])
     try:
         st = os.stat(path)
     except OSError:
         return {"ok": False, "error": "Súbor neexistuje."}
 
-    cache = _cache_path(path, st)
+    cache = _cache_path(path, st, px)
     meta = cache.with_suffix(".txt")  # druh náhľadu + počet strán
     if cache.exists() and meta.exists():
         kind, _, pages = meta.read_text(encoding="ascii").partition("|")
@@ -170,14 +175,14 @@ def get_thumb(path: str, ftype: str) -> dict:
     pages = 0
     try:
         if ftype == "PDF":
-            pix, pages = _render_pdf(path)
+            pix, pages = _render_pdf(path, px)
             kind = "pdf"
         else:
             try:
-                pix = _shell_image(path, _SIIGBF_BIGGERSIZEOK | _SIIGBF_THUMBNAILONLY)
+                pix = _shell_image(path, _SIIGBF_BIGGERSIZEOK | _SIIGBF_THUMBNAILONLY, px // 2)
                 kind = "shell"
             except OSError:
-                pix = _shell_image(path, _SIIGBF_BIGGERSIZEOK | _SIIGBF_ICONONLY)
+                pix = _shell_image(path, _SIIGBF_BIGGERSIZEOK | _SIIGBF_ICONONLY, 256)
                 kind = "icon"
     except Exception as e:
         log.warning("Náhľad zlyhal %s: %s", path, e)

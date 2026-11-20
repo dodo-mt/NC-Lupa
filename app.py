@@ -163,15 +163,18 @@ class Api:
         rows = self._q("SELECT path FROM files WHERE id = ?", (file_id,))
         return rows[0]["path"] if rows else None
 
-    def get_thumb(self, file_id: int) -> dict:
-        """Náhľad súboru ako data URI (PNG) – z cache alebo novo vygenerovaný."""
+    def get_thumb(self, file_id: int, size: str = "l") -> dict:
+        """Náhľad súboru ako data URI (PNG) – z cache alebo novo vygenerovaný.
+
+        size: 'l' = detail, 's' = galéria. Pri NC/txt vráti text.
+        """
         rows = self._q("SELECT path, ftype, ext FROM files WHERE id = ?", (file_id,))
         if not rows:
             return {"ok": False, "error": "Súbor nie je v databáze."}
         f = rows[0]
         if f["ftype"] == "NC" or f["ext"] in thumbs.TEXT_EXTS:
-            return thumbs.get_text(f["path"])
-        r = thumbs.get_thumb(f["path"], f["ftype"])
+            return thumbs.get_text(f["path"], 30 if size == "s" else thumbs.TEXT_MAX_LINES)
+        r = thumbs.get_thumb(f["path"], f["ftype"], size)
         if r["ok"]:
             data = Path(r.pop("file")).read_bytes()
             r["src"] = "data:image/png;base64," + base64.b64encode(data).decode("ascii")

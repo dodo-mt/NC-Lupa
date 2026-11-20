@@ -20,6 +20,10 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
     </button>
   </div>
+  <div class="seg dark" role="group" aria-label="Zobrazenie">
+    <button type="button" data-mode="list" id="modeList">Zoznam</button>
+    <button type="button" data-mode="gallery" id="modeGallery">Galéria</button>
+  </div>
   <span class="scan-info" id="scanInfo"></span>
 </header>
 
@@ -69,8 +73,24 @@
         </thead>
         <tbody id="rows"></tbody>
       </table>
-      <div class="empty" id="empty">Vľavo vyber zákazku alebo priečinok.</div>
     </div>
+    <div class="gallery-wrap" id="galleryWrap" hidden>
+      <div class="gal-tools">
+        <label for="galSort" class="flabel">Triediť</label>
+        <select id="galSort">
+          <option value="modified:-1">Zmenený – najnovšie</option>
+          <option value="modified:1">Zmenený – najstaršie</option>
+          <option value="name:1">Názov</option>
+          <option value="ftype:1">Typ</option>
+          <option value="folder:1">Priečinok</option>
+          <option value="size:-1">Veľkosť</option>
+        </select>
+        <label for="galSize" class="flabel" style="margin-left:16px">Veľkosť</label>
+        <input type="range" id="galSize" min="120" max="420" step="10" value="220">
+      </div>
+      <div class="gallery" id="gallery"></div>
+    </div>
+    <div class="empty" id="empty">Vľavo vyber zákazku alebo priečinok.</div>
   </main>
   <div class="resizer" data-pane="detail" title="Ťahaním zmeníš šírku"></div>
 

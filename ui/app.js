@@ -26,7 +26,15 @@ const state = {
   sortKey: 'ftype',
   sortDir: 1,
   selFile: null,
+  mode: 'list',        // 'list' | 'gallery'
 };
+
+function lsGet(k, def) {
+  try { const v = localStorage.getItem(k); return v === null ? def : v; } catch (e) { return def; }
+}
+function lsSet(k, v) {
+  try { localStorage.setItem(k, v); } catch (e) { /* nevadí */ }
+}
 
 let api;
 let reqSeq = 0;
@@ -187,6 +195,7 @@ async function selectNode(jobId, rel) {
   renderScope();
   await refresh();
   $('tableWrap').scrollTop = 0;
+  $('galleryWrap').scrollTop = 0;
 }
 
 // Z výsledku „Celé L:\“ skočí na zákazku v strome
@@ -304,6 +313,13 @@ function sortedFiles() {
 function renderFiles() {
   const files = sortedFiles();
   state.view = files;
+  renderEmpty(files);
+  if (state.mode === 'gallery') {
+    renderGallery(files);
+    $('rows').innerHTML = '';
+    return;
+  }
+  $('gallery').innerHTML = '';
   const all = state.scope === 'all';
   $('rows').innerHTML = files.map((f) => {
     const loc = all ? (f.folder ? `${f.job} \\ ${f.folder}` : f.job) : f.folder;
@@ -318,6 +334,13 @@ function renderFiles() {
     <td class="c-size">${fmtSize(f.size)}</td></tr>`;
   }).join('');
 
+  for (const th of document.querySelectorAll('.files th')) {
+    th.classList.toggle('asc', th.dataset.sort === state.sortKey && state.sortDir === 1);
+    th.classList.toggle('desc', th.dataset.sort === state.sortKey && state.sortDir === -1);
+  }
+}
+
+function renderEmpty(files) {
   let empty = '';
   if (!files.length) {
     if (state.scope === 'job' && !state.sel) empty = 'Vľavo vyber zákazku alebo prepni na „Celé L:\\“.';
@@ -327,19 +350,113 @@ function renderFiles() {
   }
   $('empty').textContent = empty;
   $('empty').hidden = !!files.length;
+}
 
-  for (const th of document.querySelectorAll('.files th')) {
-    th.classList.toggle('asc', th.dataset.sort === state.sortKey && state.sortDir === 1);
-    th.classList.toggle('desc', th.dataset.sort === state.sortKey && state.sortDir === -1);
+// --- galéria ---------------------------------------------------------------
+const thumbCache = new Map();   // id -> výsledok get_thumb('s'); obmedzená veľkosť
+const THUMB_CACHE_MAX = 300;
+const THUMB_PARALLEL = 4;
+let thumbQueue = [];
+let thumbBusy = 0;
+let galObserver = null;
+let galGen = 0;                 // generácia vykreslenia – staré požiadavky sa zahodia
+
+function renderGallery(files) {
+  galGen++;
+  thumbQueue = [];
+  if (galObserver) galObserver.disconnect();
+  const all = state.scope === 'all';
+  $('gallery').innerHTML = files.map((f) => {
+    const sub = all ? `${f.job}${f.folder ? ' \\ ' + f.folder : ''}` : (f.folder || '');
+    const date = fmtDate(f.modified).slice(0, 10);
+    return `<div class="card${f.id === state.selFile ? ' sel' : ''}" data-id="${f.id}" title="${esc(f.name)}">
+      <div class="g-thumb" data-id="${f.id}"><span class="pv-msg"></span></div>
+      <div class="g-name">${badge(f.ftype)}<span>${highlight(f.name)}</span></div>
+      <div class="g-sub">${esc(sub)}${sub ? ' · ' : ''}${date} · ${esc(f.owner)}</div>
+    </div>`;
+  }).join('');
+
+  galObserver = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      galObserver.unobserve(e.target);
+      queueThumb(e.target);
+    }
+  }, { root: $('galleryWrap'), rootMargin: '400px 0px' });
+  for (const el of $('gallery').querySelectorAll('.g-thumb')) galObserver.observe(el);
+}
+
+function paintThumb(el, r) {
+  if (!r.ok) {
+    el.innerHTML = '<span class="pv-msg">Bez náhľadu</span>';
+  } else if (r.kind === 'text') {
+    el.classList.add('text');
+    el.innerHTML = `<pre>${esc(r.text)}</pre>`;
+  } else {
+    el.innerHTML = `<img src="${r.src}" alt="" class="pv-${r.kind}" loading="lazy">`;
   }
+}
+
+function queueThumb(el) {
+  const id = Number(el.dataset.id);
+  if (thumbCache.has(id)) { paintThumb(el, thumbCache.get(id)); return; }
+  el.firstElementChild.textContent = 'Načítavam…';
+  thumbQueue.push({ el, id, gen: galGen });
+  pumpThumbs();
+}
+
+function pumpThumbs() {
+  while (thumbBusy < THUMB_PARALLEL && thumbQueue.length) {
+    const job = thumbQueue.shift();
+    if (job.gen !== galGen || !job.el.isConnected) continue;
+    thumbBusy++;
+    api.get_thumb(job.id, 's').then((r) => {
+      thumbCache.set(job.id, r);
+      if (thumbCache.size > THUMB_CACHE_MAX) thumbCache.delete(thumbCache.keys().next().value);
+      if (job.gen === galGen && job.el.isConnected) paintThumb(job.el, r);
+    }).finally(() => { thumbBusy--; pumpThumbs(); });
+  }
+}
+
+function setMode(mode) {
+  state.mode = mode;
+  lsSet('lupa.mode', mode);
+  $('modeList').classList.toggle('on', mode === 'list');
+  $('modeGallery').classList.toggle('on', mode === 'gallery');
+  $('tableWrap').hidden = mode !== 'list';
+  $('galleryWrap').hidden = mode !== 'gallery';
+  syncGalSort();
+  renderFiles();
+}
+
+function syncGalSort() {
+  const v = `${state.sortKey}:${state.sortDir}`;
+  const sel = $('galSort');
+  if ([...sel.options].some((o) => o.value === v)) sel.value = v;
+}
+
+function setCardSize(px) {
+  $('gallery').style.setProperty('--card', `${px}px`);
+  $('galSize').value = px;
+}
+
+// počet stĺpcov galérie (pre šípky hore/dole)
+function galColumns() {
+  const cards = $('gallery').children;
+  if (cards.length < 2) return 1;
+  const top = cards[0].offsetTop;
+  let n = 0;
+  while (n < cards.length && cards[n].offsetTop === top) n++;
+  return Math.max(1, n);
 }
 
 function selectFile(id, scroll) {
   state.selFile = id;
-  for (const tr of $('rows').children) tr.classList.toggle('sel', Number(tr.dataset.id) === id);
+  const box = state.mode === 'gallery' ? $('gallery') : $('rows');
+  for (const el of box.children) el.classList.toggle('sel', Number(el.dataset.id) === id);
   if (scroll) {
-    const tr = $('rows').querySelector(`tr[data-id="${id}"]`);
-    if (tr) tr.scrollIntoView({ block: 'nearest' });
+    const el = box.querySelector(`[data-id="${id}"]`);
+    if (el) el.scrollIntoView({ block: 'nearest' });
   }
   renderDetail();
 }
@@ -452,7 +569,7 @@ function bind() {
     renderChips();
     refresh();
   });
-  for (const b of document.querySelectorAll('.seg button')) {
+  for (const b of document.querySelectorAll('.seg button[data-scope]')) {
     b.addEventListener('click', () => {
       if (state.scope === b.dataset.scope) return;
       state.scope = b.dataset.scope;
@@ -461,6 +578,29 @@ function bind() {
       refresh();
     });
   }
+
+  // galéria
+  for (const b of document.querySelectorAll('.seg.dark button')) {
+    b.addEventListener('click', () => setMode(b.dataset.mode));
+  }
+  $('gallery').addEventListener('click', (e) => {
+    const c = e.target.closest('.card');
+    if (c) selectFile(Number(c.dataset.id));
+  });
+  $('gallery').addEventListener('dblclick', (e) => {
+    const c = e.target.closest('.card');
+    if (c) openFile(Number(c.dataset.id));
+  });
+  $('galSort').addEventListener('change', () => {
+    const [k, d] = $('galSort').value.split(':');
+    state.sortKey = k;
+    state.sortDir = Number(d);
+    renderFiles();
+  });
+  $('galSize').addEventListener('input', () => {
+    setCardSize(Number($('galSize').value));
+    lsSet('lupa.card', $('galSize').value);
+  });
 
   // zoznam
   $('rows').addEventListener('click', (e) => {
@@ -488,12 +628,17 @@ function bind() {
       $('q').select();
       return;
     }
-    if (e.target.tagName === 'SELECT') return;
+    if (e.target.tagName === 'SELECT' || (e.target.tagName === 'INPUT' && e.target.type === 'range')) return;
     if (!state.view.length) return;
     const i = state.view.findIndex((f) => f.id === state.selFile);
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    const gal = state.mode === 'gallery';
+    const step = { ArrowDown: gal ? galColumns() : 1, ArrowUp: gal ? -galColumns() : -1 };
+    if (gal) { step.ArrowRight = 1; step.ArrowLeft = -1; }
+    // v poli hľadania nechať šípky vľavo/vpravo na pohyb kurzora
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && e.target.id === 'q') return;
+    if (step[e.key]) {
       e.preventDefault();
-      const n = e.key === 'ArrowDown' ? Math.min(i + 1, state.view.length - 1) : Math.max(i - 1, 0);
+      const n = i < 0 ? 0 : Math.max(0, Math.min(state.view.length - 1, i + step[e.key]));
       selectFile(state.view[n].id, true);
     } else if (e.key === 'Enter' && i >= 0) {
       openFile(state.view[i].id);
@@ -643,6 +788,8 @@ async function init() {
   $('scopeAll').textContent = `Celé ${meta.root}`;
   renderChips();
   renderScope();
+  setCardSize(Number(lsGet('lupa.card', 220)));
+  setMode(lsGet('lupa.mode', 'list') === 'gallery' ? 'gallery' : 'list');
   if (!meta.db_ok) {
     $('scanInfo').textContent = 'Databáza neexistuje';
     $('empty').textContent = `Databáza sa nenašla: ${meta.db} – spusti najprv scanner.py.`;

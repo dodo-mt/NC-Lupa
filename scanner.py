@@ -6,6 +6,7 @@ Použitie:
     python scanner.py [--root L:\\] [--db lupa.db] [--full] [--only "Zákazník"]
 """
 import argparse
+import fnmatch
 import logging
 import os
 import sys
@@ -250,7 +251,9 @@ class Scanner:
                         subdirs.append((entry.path, f"{rel}\\{name}" if rel else name))
                     continue
                 ext, ver = split_ext(name)
-                if name.lower() in config.IGNORE_FILES or ext in config.IGNORE_EXTS:
+                low = name.lower()
+                if (low in config.IGNORE_FILES or ext in config.IGNORE_EXTS
+                        or any(fnmatch.fnmatchcase(low, g) for g in config.IGNORE_GLOBS)):
                     continue
                 cands.append((entry, ext, ver))
 
