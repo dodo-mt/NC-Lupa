@@ -53,6 +53,16 @@ CREATE TABLE IF NOT EXISTS scan_log (
     errors     INTEGER
 );
 
+-- obrazové odtlačky PDF (odtlacky.py) – kľúč je cesta, nie files.id (zákazka sa prepisuje nanovo);
+-- záznam platí, kým sedí veľkosť, zmenený a verzia algoritmu
+CREATE TABLE IF NOT EXISTS prints (
+    path     TEXT PRIMARY KEY,
+    size     INTEGER,
+    modified REAL,
+    version  INTEGER,
+    views    BLOB            -- odtlacky.pack(); NULL = PDF sa nedalo spracovať / bez obsahu
+);
+
 CREATE INDEX IF NOT EXISTS ix_jobs_customer   ON jobs(customer_id);
 CREATE INDEX IF NOT EXISTS ix_positions_job   ON positions(job_id);
 CREATE INDEX IF NOT EXISTS ix_files_name      ON files(name);

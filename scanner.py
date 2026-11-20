@@ -348,6 +348,69 @@ class Scanner:
         self.con.commit()
 
 
+# ---------------------------------------------------------------------------
+# Odtlačky výkresov (PDF) pre „Podobné výkresy“
+# ---------------------------------------------------------------------------
+def update_prints(con, minutes: float, customer: str | None = None, progress=None) -> dict:
+    """Dopočíta chýbajúce / zastarané odtlačky PDF (najnovšie prvé), najviac `minutes` minút.
+
+    Zmazaným PDF odtlačky odstráni. Vracia {'added', 'failed', 'removed', 'left'}.
+    """
+    res = {"added": 0, "failed": 0, "removed": 0, "left": 0}
+    if minutes <= 0:
+        return res
+    try:
+        import odtlacky
+    except ImportError as e:
+        log.warning("Odtlačky výkresov sa nepočítajú (chýba knižnica): %s", e)
+        return res
+
+    if not customer:
+        res["removed"] = con.execute(
+            "DELETE FROM prints WHERE path NOT IN (SELECT path FROM files WHERE ftype='PDF')").rowcount
+        con.commit()
+
+    sql = ("SELECT f.path, f.size, f.modified FROM files f LEFT JOIN prints p ON p.path = f.path"
+           " WHERE f.ftype = 'PDF' AND (p.path IS NULL OR p.size IS NOT f.size"
+           " OR p.modified IS NOT f.modified OR p.version IS NOT ?)")
+    args = [odtlacky.VERSION]
+    if customer:
+        sql += " AND f.customer_id = (SELECT id FROM customers WHERE name = ? COLLATE NOCASE)"
+        args.append(customer)
+    todo = con.execute(sql + " ORDER BY f.modified DESC", args).fetchall()
+    if not todo:
+        return res
+
+    log.info("Odtlačky výkresov: na spracovanie %d PDF (limit %g min)", len(todo), minutes)
+    deadline = time.time() + minutes * 60
+    max_bytes = config.PRINTS_MAX_MB * 1024 * 1024
+    processed = 0
+    for i, (path, size, modified) in enumerate(todo):
+        if time.time() > deadline:
+            break
+        processed += 1
+        if progress and i % 20 == 0:
+            progress(i + 1, len(todo), "odtlačky výkresov")
+        blob = None
+        if (size or 0) <= max_bytes:
+            try:
+                views = odtlacky.views(path if len(path) < 260 else to_long(path))
+                blob = odtlacky.pack(views) if views else None
+                res["added"] += 1
+            except Exception as e:
+                res["failed"] += 1
+                log.debug("Odtlačok zlyhal %s: %s", path, e)
+        con.execute("INSERT OR REPLACE INTO prints(path, size, modified, version, views) VALUES (?,?,?,?,?)",
+                    (path, size, modified, odtlacky.VERSION, blob))
+        if i % 50 == 49:
+            con.commit()
+    con.commit()
+    res["left"] = len(todo) - processed
+    log.info("Odtlačky výkresov: hotové %d, nedali sa spracovať %d, zostáva %d, zmazané %d",
+             res["added"], res["failed"], res["left"], res["removed"])
+    return res
+
+
 LOCAL_LOG = config.LOCAL_DIR / "lupa_scan.log"
 
 
@@ -449,7 +512,8 @@ class SingleInstance:
 
 
 def run_scan(root: str, db_path: Path, full=False, auto=False, only=None,
-             recent_days=config.RECENT_DAYS, progress=None) -> dict:
+             recent_days=config.RECENT_DAYS, progress=None,
+             prints_minutes=config.PRINTS_MINUTES) -> dict:
     """Jeden sken vrátane publikovania. Vracia súhrn pre CLI aj ikonu pri hodinách.
 
     status: 'ok' | 'busy' (už beží iný sken) | 'no_root' (koreň nedostupný) | 'error'
@@ -477,6 +541,14 @@ def run_scan(root: str, db_path: Path, full=False, auto=False, only=None,
             res["full"] = full = full or (auto and not only and need_full(con))
             sc = Scanner(con, root, full, only, recent_days, progress)
             sc.run()
+            try:
+                pr = update_prints(con, prints_minutes, only, progress)
+                res["prints"] = pr
+                if pr["added"] or pr["failed"] or pr["removed"]:
+                    sc.changed = True
+            except Exception:  # odtlačky nesmú pokaziť sken súborov
+                log.exception("Odtlačky výkresov zlyhali")
+                con.rollback()
         finally:
             con.close()
         res.update(jobs=sc.jobs_scanned + sc.jobs_skipped, changed=sc.jobs_changed,
@@ -530,6 +602,8 @@ def main(argv=None):
     ap.add_argument("--only", help="skenovať len jedného zákazníka (názov priečinka)")
     ap.add_argument("--recent-days", type=int, default=config.RECENT_DAYS,
                     help="inkrementálne: znova prejsť zákazky so zmenou za posledných N dní")
+    ap.add_argument("--prints-minutes", type=float, default=config.PRINTS_MINUTES,
+                    help="odtlačky výkresov: najviac N minút na sken (0 = vypnuté)")
     ap.add_argument("--tray", action="store_true",
                     help="ikona pri hodinách: sken každú hodinu, menu, upozornenia")
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -546,7 +620,8 @@ def main(argv=None):
         import tray
         return tray.run(args.root, target)
 
-    res = run_scan(args.root, target, args.full, args.auto, args.only, args.recent_days)
+    res = run_scan(args.root, target, args.full, args.auto, args.only, args.recent_days,
+                   prints_minutes=args.prints_minutes)
     return {"ok": 0, "busy": 0, "no_root": 2}.get(res["status"], 1)
 
 

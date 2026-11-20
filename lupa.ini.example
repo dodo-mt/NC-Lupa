@@ -8,3 +8,5 @@ root = L:\
 db = lupa.db
 ; inkrementálny sken: znova prejsť zákazky so zmenou za posledných N dní
 recent_days = 14
+; odtlačky výkresov (Podobné výkresy): najviac N minút výpočtu na jeden sken, 0 = vypnuté
+prints_minutes = 30

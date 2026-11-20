@@ -105,7 +105,7 @@ def main():
     pyinstaller("app.py", "Lupa", "Lupa – prehliadač zákaziek", ["--add-data", f"{ROOT / 'ui'};ui"])
     pyinstaller("scanner.py", "lupa-sken", "Lupa – sken zákaziek", [
         "--add-data", f"{ASSETS};assets",
-        "--exclude-module", "pymupdf", "--exclude-module", "webview",
+        "--exclude-module", "webview",
     ])
     # sprievodné súbory: všetko z deploy\ + vzor nastavení
     for f in (ROOT / "deploy").iterdir():

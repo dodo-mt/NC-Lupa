@@ -61,6 +61,9 @@ Mapovanie drž na jednom mieste (`config.py`), aby sa dalo ľahko rozšíriť.
     naraz (`os.replace`, opakuje pri obsadení) – len keď sa niečo zmenilo (značka `.pending`).
     Pri nezmenenej zákazke sa nič neprepisuje a vlastník sa preberá z DB (GetFileSecurity cez sieť je pomalé).
   - `--auto` = inkrementálny, raz za 7 dní úplný (pre Plánovač úloh). Zámok – súbežne beží len jeden sken.
+  - **Odtlačky výkresov** (`odtlacky.py`, tabuľka `prints`, kľúč = cesta + veľkosť + mtime + `odtlacky.VERSION`):
+    po skene súborov sa dopočítajú chýbajúce (najnovšie PDF prvé), najviac `prints_minutes` min na sken
+    (`lupa.ini`, 0 = vypnuté) – prvý prechod L:\ sa rozloží do viacerých skenov. Pri zmene algoritmu zvýš `VERSION`.
 - Aplikácia otvára DB **len na dobu dotazu** (nedrží súbor), aby ho skener mohol vymeniť.
   - Spúšťanie z príkazového riadka (neskôr cez Plánovač úloh): `python scanner.py --root L:\ --db <cesta> [--full] [--only "Zákazník"]`.
 - **Aplikácia** (`app.py`): **pywebview** okno s HTML/CSS/JS rozhraním (nie prehliadač, nie server).
@@ -96,6 +99,7 @@ positions(id, job_id, name, rel_path, path)
 files(id, position_id, job_id, customer_id, name, ext, ftype, path,
       size, created, modified, owner)
 scan_log(id, started, finished, mode, files_seen, errors)
+prints(path, size, modified, version, views)   -- odtlačky PDF, views = odtlacky.pack()
 ```
 
 - Indexy: `files(name)`, `files(owner)`, `files(ftype)`, `files(modified)`.
@@ -110,7 +114,8 @@ pri hodinách, stavový riadok, kontextové menu stromu. Vydania = git tagy `v1.
 **Čaká sa na používateľa**: nasadenie `dist\Lupa\` na `L:\_Lupa\`, `ikona_skenu.bat`, prvý úplný sken
 celého `L:\`. Potom overiť: trvanie skenu, či vlastníci = ozajstné mená kolegov, chyby v logu.
 
-**Ďalší krok**: „Nájdi podobné výkresy“ (bod 5 nižšie). Možné drobnosti: vlastné vykreslenie
+**Ďalší krok**: „Nájdi podobné výkresy“ (bod 5 nižšie) – odtlačky v skeneri hotové, chýba UI
+(tlačidlo v detaile súboru → `odtlacky.ViewIndex` nad tabuľkou `prints`). Možné drobnosti: vlastné vykreslenie
 náhľadu STL (Windows ho bez doplnku nevie), tlačidlo „Obnoviť“ v Lupe bez reštartu.
 
 ## Verzia 1 – rozsah (hotové)
@@ -129,6 +134,8 @@ náhľadu STL (Windows ho bez doplnku nevie), tlačidlo „Obnoviť“ v Lupe be
 3. ✅ Kontrola **úplnosti zákazky** (Model / PDF / CAM / NC / Listy) – stav v strome + štítky.
 4. ✅ Exe na `L:\_Lupa\` (`build.py`) + ikona skenu pri hodinách (namiesto Plánovača úloh).
 5. ⏳ **Nájdi podobné výkresy** – offline obrazové „odtlačky“ PDF (orezať rám a pečiatku), neskôr kombinácia s rozmermi zo STP.
+   Metóda: list → pohľady (zhluky čiar) → mriežka 16×16, porovnanie v 8 symetriách, slabší z oboch smerov.
+   Na vzorkách: rovnaký výkres / sken / revízia = 1. miesto; náš `drw0001` ↔ výkres zákazníka zatiaľ slabé.
 
 ## Vzhľad
 
@@ -161,7 +168,7 @@ neskôr možno (napr. „otvoriť v NC editore“).
 - Malé kroky, po každom kroku nech sa dá aplikácia spustiť a vyskúšať.
 - **Verzia** je v `config.VERSION` (zobrazí sa v UI, menu ikony skenu, logu a vo vlastnostiach exe).
   Pri vydaní novej verzie pre `L:\_Lupa\` ju zvýš a pridaj git tag `vX.Y.Z`.
-- `requirements.txt` udržuj aktuálny (pywebview, pywin32; neskôr PyMuPDF).
+- `requirements.txt` udržuj aktuálny (pywebview, pywin32, PyMuPDF, numpy).
 - Konfigurácia (cesta k `L:\`, cesta k DB) v `config.py` / `lupa.ini`, nie natvrdo v kóde.
   Vzor: `lupa.ini.example`; lokálny `lupa.ini` (mimo gitu) ukazuje pri vývoji na `vzorky`.
 - Pracuj **len v adresári projektu**. Testovacie dáta sú v `vzorky\` (kópia štruktúry `L:\`, **nikdy na git**).

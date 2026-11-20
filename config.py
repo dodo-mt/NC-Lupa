@@ -22,6 +22,7 @@ _DEFAULTS = {
     "root": "L:\\",
     "db": "lupa.db",
     "recent_days": "14",
+    "prints_minutes": "30",
 }
 
 
@@ -48,6 +49,10 @@ THUMBS_DIR = LOCAL_DIR / "thumbs"
 ROOT = _resolve(_ini["root"])
 DB_PATH = _resolve(_ini["db"])
 RECENT_DAYS = int(_ini["recent_days"])
+# Odtlačky výkresov (podobné výkresy): najviac N minút výpočtu na jeden sken, 0 = vypnuté.
+# Prvý prechod celého L:\ sa tak rozloží do viacerých skenov.
+PRINTS_MINUTES = float(_ini["prints_minutes"])
+PRINTS_MAX_MB = 100  # väčšie PDF sa preskočia (obrovské skeny)
 FULL_EVERY_DAYS = 7  # scanner --auto: úplný sken, ak posledný bol pred viac ako N dňami
 
 # ---------------------------------------------------------------------------
