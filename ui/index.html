@@ -76,6 +76,7 @@
         <thead>
           <tr>
             <th data-sort="ftype" class="c-type">Typ</th>
+            <th data-sort="sim" class="c-sim" title="Podobnosť výkresu s hľadaným (tvar pohľadov)">Podobnosť</th>
             <th data-sort="name" class="c-name">Názov</th>
             <th data-sort="folder" class="c-folder">Priečinok</th>
             <th data-sort="owner" class="c-owner">Vlastník</th>
@@ -91,6 +92,7 @@
       <div class="gal-tools">
         <label for="galSort" class="flabel">Triediť</label>
         <select id="galSort">
+          <option value="sim:-1" id="galSortSim" hidden>Podobnosť</option>
           <option value="modified:-1">Zmenený – najnovšie</option>
           <option value="modified:1">Zmenený – najstaršie</option>
           <option value="name:1">Názov</option>

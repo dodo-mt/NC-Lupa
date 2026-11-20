@@ -6,8 +6,10 @@ import base64
 import json
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import webview
@@ -25,6 +27,8 @@ else:
 FILE_COLS = "f.id, f.name, f.ftype, f.path, f.size, f.created, f.modified, f.owner, p.rel_path AS folder"
 SEARCH_LIMIT = 2000  # max. počet riadkov vo výsledku
 STALE_HOURS = 24     # posledný sken starší → v stavovom riadku oranžovo
+SIMILAR_LIMIT = 60   # počet podobných výkresov vo výsledku
+SIMILAR_MIN = 0.3    # slabšie zhody sa neukazujú
 
 
 def _like_escape(s: str) -> str:
@@ -50,13 +54,18 @@ class Api:
 
     def __init__(self, db_path: Path):
         self._db_path = db_path
+        self._idx = None                  # (značka DB, ViewIndex, cesty) – podobné výkresy
+        self._idx_lock = threading.Lock()
 
     def _q(self, sql: str, args=()) -> list[dict]:
         # Spojenie len na dobu dotazu – Lupa nedrží súbor DB otvorený, aby ho skener
         # mohol na zdieľanom disku vymeniť za novú verziu.
         if not self._db_path.exists():
             return []
-        con = db.open_ro(self._db_path)
+        try:
+            con = db.open_ro(self._db_path)
+        except sqlite3.Error as e:  # do UI s cestou, aby bolo jasné, čo sa nedá otvoriť
+            raise RuntimeError(f"databáza {self._db_path} sa nedá otvoriť ({e})") from e
         try:
             return [dict(r) for r in con.execute(sql, args)]
         finally:
@@ -82,6 +91,13 @@ class Api:
             "SELECT (SELECT COUNT(*) FROM customers) AS customers, (SELECT COUNT(*) FROM jobs) AS jobs,"
             " (SELECT COUNT(*) FROM files) AS files"
         )
+        if counts:
+            try:  # stará DB tabuľku prints nemá
+                counts[0].update(self._q(
+                    "SELECT (SELECT COUNT(*) FROM prints WHERE views IS NOT NULL) AS prints,"
+                    " (SELECT COUNT(*) FROM files WHERE ftype = 'PDF') AS pdfs")[0])
+            except Exception:
+                pass
         return {
             "version": config.VERSION,
             "completeness": [n for n, _t, _e in config.COMPLETENESS],
@@ -205,6 +221,68 @@ class Api:
             args + [SEARCH_LIMIT],
         )
         return {"rows": rows, "total": total[0]["n"] if total else 0, "limit": SEARCH_LIMIT}
+
+    # --- podobné výkresy ----------------------------------------------------
+    def _prints_index(self):
+        """Index odtlačkov (odtlacky.ViewIndex, cesty) – v pamäti, znova sa načíta po výmene DB."""
+        import odtlacky
+        st = self._db_path.stat()
+        stamp = (st.st_mtime_ns, st.st_size, odtlacky.VERSION)
+        with self._idx_lock:
+            if self._idx and self._idx[0] == stamp:
+                return self._idx[1], self._idx[2]
+            rows = self._q("SELECT path, views FROM prints WHERE views IS NOT NULL AND version = ?",
+                           (odtlacky.VERSION,))
+            idx = odtlacky.ViewIndex([r["views"] for r in rows])
+            paths = [r["path"] for r in rows]
+            self._idx = (stamp, idx, paths)
+            return idx, paths
+
+    def similar(self, file_id: int, owner: str = "") -> dict:
+        """Najpodobnejšie výkresy k PDF. Prvý riadok je hľadaný výkres (query=True).
+
+        Vracia {'ok', 'rows' (s 'sim' 0..1), 'indexed' (počet výkresov s odtlačkom)} alebo {'ok': False, 'error'}.
+        """
+        import odtlacky
+        if not self._db_path.exists():
+            return {"ok": False, "error": "Databáza neexistuje."}
+        me = self._q("SELECT path, ftype FROM files WHERE id = ?", (file_id,))
+        if not me or me[0]["ftype"] != "PDF":
+            return {"ok": False, "error": "Podobné výkresy sa hľadajú len k PDF."}
+        path = me[0]["path"]
+        try:
+            pr = self._q("SELECT views, version FROM prints WHERE path = ?", (path,))
+        except Exception:  # DB zo staršieho skenera – tabuľka prints chýba
+            return {"ok": False, "error": "Databáza ešte nemá odtlačky výkresov – treba novší skener (lupa-sken.exe)."}
+        if not pr or pr[0]["version"] != odtlacky.VERSION:
+            return {"ok": False, "error": "Tento výkres ešte nemá odtlačok – skener ho spracuje "
+                                          "pri niektorom z ďalších skenov."}
+        if pr[0]["views"] is None:
+            return {"ok": False, "error": "Z tohto PDF sa odtlačok nedá urobiť (prázdne alebo poškodené)."}
+        try:
+            idx, paths = self._prints_index()
+        except Exception as e:  # napr. chýba numpy
+            return {"ok": False, "error": f"Podobné výkresy nie sú k dispozícii: {e}"}
+        scores = idx.search(pr[0]["views"])
+        # kandidátov viac, filter vlastníka sa uplatní až na riadkoch súborov
+        order = scores.argsort()[::-1][:SIMILAR_LIMIT * (5 if owner else 1) + 1]
+        sim = {paths[i]: float(scores[i]) for i in order if scores[i] >= SIMILAR_MIN and paths[i] != path}
+        sim[path] = 1.0
+        rows = []
+        keys = list(sim)
+        for a in range(0, len(keys), 500):   # SQLite má limit počtu parametrov
+            part = keys[a:a + 500]
+            rows += self._q(
+                f"SELECT {FILE_COLS}, f.job_id, j.name AS job, c.name AS customer"
+                " FROM files f JOIN positions p ON p.id = f.position_id"
+                " JOIN jobs j ON j.id = f.job_id JOIN customers c ON c.id = f.customer_id"
+                f" WHERE f.path IN ({','.join('?' * len(part))})", part)
+        for r in rows:
+            r["sim"] = sim[r["path"]]
+            r["query"] = r["id"] == file_id
+        rows = [r for r in rows if r["query"] or not owner or r["owner"] == owner]
+        rows.sort(key=lambda r: (not r["query"], -r["sim"]))
+        return {"ok": True, "rows": rows[:SIMILAR_LIMIT + 1], "indexed": idx.n}
 
     # --- akcie -------------------------------------------------------------
     def _known_file(self, file_id: int) -> str | None:

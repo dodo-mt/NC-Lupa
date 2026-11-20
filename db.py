@@ -1,6 +1,7 @@
 """SQLite databáza Lupy – schéma a otváranie."""
 import sqlite3
 from pathlib import Path
+from urllib.parse import quote
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS customers (
@@ -84,8 +85,24 @@ def open_rw(path: Path) -> sqlite3.Connection:
     return con
 
 
+def ro_uri(path: Path) -> str:
+    """URI na otvorenie len na čítanie, funguje aj pre sieťovú cestu.
+
+    Path.as_uri() dá pre \\\\server\\share\\x.db 'file://server/share/x.db' – SQLite také URI
+    odmietne („invalid uri authority“). Správne je prázdna autorita: 'file:////server/share/x.db'.
+    """
+    p = str(path.absolute()).replace("\\", "/")
+    if p.startswith("//?/UNC/"):
+        p = "//" + p[8:]
+    elif p.startswith("//?/"):
+        p = p[4:]
+    if not p.startswith("//"):
+        p = "/" + p                    # C:/x.db -> /C:/x.db
+    return "file://" + quote(p, safe="/:") + "?mode=ro"
+
+
 def open_ro(path: Path) -> sqlite3.Connection:
-    """Otvorí databázu len na čítanie – pre aplikáciu."""
-    con = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    """Otvorí databázu len na čítanie – pre aplikáciu (aj na sieťovom disku)."""
+    con = sqlite3.connect(ro_uri(path), uri=True)
     con.row_factory = sqlite3.Row
     return con

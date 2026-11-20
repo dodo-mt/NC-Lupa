@@ -115,8 +115,11 @@ class ScanError(Exception):
 
 
 class Scanner:
-    def __init__(self, con, root: str, full: bool, only: str | None, recent_days: int, progress=None):
+    def __init__(self, con, root: str, full: bool, only: str | None, recent_days: int, progress=None,
+                 customers: list[str] | None = None, exclude: list[str] | None = None):
         self.con = con
+        self.customers = customers or []  # vzory priečinkov v koreni, ktoré sú zákazníci ([] = všetky)
+        self.exclude = exclude or []      # vzory priečinkov v koreni na vynechanie
         self.root = os.path.abspath(root)
         self.full = full
         self.only = only
@@ -160,11 +163,21 @@ class Scanner:
         entries = self._scandir(to_long(self.root))
         if entries is None:
             raise ScanError(f"Koreň {self.root} sa nedá čítať.")
-        customers = [
-            e for e in entries
-            if is_dir(e) and e.name.lower() not in config.IGNORE_ROOT_DIRS
-            and (not self.only or e.name.lower() == self.only.lower())
-        ]
+        customers = []
+        skipped = []
+        for e in entries:
+            if not is_dir(e) or e.name.lower() in config.IGNORE_ROOT_DIRS:
+                continue
+            if self.only:
+                if e.name.lower() == self.only.lower():  # --only platí bez ohľadu na filter
+                    customers.append(e)
+            elif self.is_customer(e.name):
+                customers.append(e)
+            else:
+                skipped.append(e.name)
+        if skipped:
+            log.info("Vynechané priečinky v koreni (customers/exclude v lupa.ini): %d – %s",
+                     len(skipped), ", ".join(sorted(skipped, key=str.lower)))
         for i, entry in enumerate(customers, 1):
             if self.progress:
                 self.progress(i, len(customers), entry.name)
@@ -192,7 +205,8 @@ class Scanner:
         if not self.only:
             for path, cid in known.items():
                 if path not in seen:
-                    log.info("Zákazník zmizol, mažem z DB: %s", path)
+                    why = "vynechaný podľa lupa.ini" if Path(path).name in skipped else "zmizol"
+                    log.info("Zákazník %s, mažem z DB: %s", why, path)
                     self.con.execute("DELETE FROM customers WHERE id=?", (cid,))
                     self.changed = True
             self.con.commit()
@@ -208,6 +222,12 @@ class Scanner:
             finished - started, self.jobs_scanned, self.jobs_changed, self.jobs_skipped,
             self.files_seen, self.errors,
         )
+
+    def is_customer(self, name: str) -> bool:
+        low = name.lower()
+        if any(fnmatch.fnmatchcase(low, p) for p in self.exclude):
+            return False
+        return not self.customers or any(fnmatch.fnmatchcase(low, p) for p in self.customers)
 
     # --- zákazky -----------------------------------------------------------
     def scan_customer(self, cid: int, long_path: str):
@@ -512,8 +532,7 @@ class SingleInstance:
 
 
 def run_scan(root: str, db_path: Path, full=False, auto=False, only=None,
-             recent_days=config.RECENT_DAYS, progress=None,
-             prints_minutes=config.PRINTS_MINUTES) -> dict:
+             recent_days=None, progress=None, prints_minutes=None) -> dict:
     """Jeden sken vrátane publikovania. Vracia súhrn pre CLI aj ikonu pri hodinách.
 
     status: 'ok' | 'busy' (už beží iný sken) | 'no_root' (koreň nedostupný) | 'error'
@@ -539,7 +558,12 @@ def run_scan(root: str, db_path: Path, full=False, auto=False, only=None,
         con = db.open_rw(work)
         try:
             res["full"] = full = full or (auto and not only and need_full(con))
-            sc = Scanner(con, root, full, only, recent_days, progress)
+            st = config.scan_settings(db_path)   # lupa.ini vedľa programu aj vedľa DB
+            if recent_days is None:
+                recent_days = st["recent_days"]
+            if prints_minutes is None:
+                prints_minutes = st["prints_minutes"]
+            sc = Scanner(con, root, full, only, recent_days, progress, st["customers"], st["exclude"])
             sc.run()
             try:
                 pr = update_prints(con, prints_minutes, only, progress)
@@ -600,10 +624,10 @@ def main(argv=None):
     ap.add_argument("--auto", action="store_true",
                     help=f"inkrementálny, raz za {config.FULL_EVERY_DAYS} dní úplný (pre Plánovač úloh)")
     ap.add_argument("--only", help="skenovať len jedného zákazníka (názov priečinka)")
-    ap.add_argument("--recent-days", type=int, default=config.RECENT_DAYS,
-                    help="inkrementálne: znova prejsť zákazky so zmenou za posledných N dní")
-    ap.add_argument("--prints-minutes", type=float, default=config.PRINTS_MINUTES,
-                    help="odtlačky výkresov: najviac N minút na sken (0 = vypnuté)")
+    ap.add_argument("--recent-days", type=int, default=None,
+                    help="inkrementálne: znova prejsť zákazky so zmenou za posledných N dní (predvolene z lupa.ini)")
+    ap.add_argument("--prints-minutes", type=float, default=None,
+                    help="odtlačky výkresov: najviac N minút na sken, 0 = vypnuté (predvolene z lupa.ini)")
     ap.add_argument("--tray", action="store_true",
                     help="ikona pri hodinách: sken každú hodinu, menu, upozornenia")
     ap.add_argument("-v", "--verbose", action="store_true")

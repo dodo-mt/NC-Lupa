@@ -137,11 +137,6 @@ def clean(path: str) -> np.ndarray:
     return ink
 
 
-def _norm(g: np.ndarray) -> np.ndarray:
-    v = g.ravel() - g.mean()
-    return v / max(float(np.linalg.norm(v)), 1e-6)
-
-
 # ---------------------------------------------------------------------------
 # Pohľady – list sa rozdelí na súvislé zhluky čiar, každý má vlastný odtlačok
 # ---------------------------------------------------------------------------
@@ -242,47 +237,65 @@ def unpack(blob: bytes) -> list[tuple[float, bytes]]:
     return [(blob[i] / 255, blob[i + 1:i + VIEW_BYTES]) for i in range(0, len(blob), VIEW_BYTES)]
 
 
-def _vview(fp: bytes) -> np.ndarray:
-    g = np.frombuffer(fp, dtype=np.uint8).reshape(VGRID, VGRID).astype(np.float32)
-    p = np.pad(g, 1, mode="edge")
-    return (p[:-2, 1:-1] + p[2:, 1:-1] + p[1:-1, :-2] + p[1:-1, 2:] + 4 * g) / 8
+def _blur(g: np.ndarray) -> np.ndarray:
+    """Jemné rozmazanie mriežok (..., VGRID, VGRID), aby malý posun nevadil."""
+    p = np.pad(g, [(0, 0)] * (g.ndim - 2) + [(1, 1), (1, 1)], mode="edge")
+    return (p[..., :-2, 1:-1] + p[..., 2:, 1:-1] + p[..., 1:-1, :-2] + p[..., 1:-1, 2:] + 4 * g) / 8
 
 
-def _syms(g: np.ndarray) -> list[np.ndarray]:
-    """8 symetrií: 4 otočenia × zrkadlenie."""
-    return [np.rot90(x, k) for x in (g, g[:, ::-1]) for k in range(4)]
+def _norm_rows(m: np.ndarray) -> np.ndarray:
+    """Riadky matice: odčítať priemer a normovať na dĺžku 1 (kosínusová podobnosť = súčin)."""
+    m = m - m.mean(axis=1, keepdims=True)
+    return m / np.maximum(np.linalg.norm(m, axis=1, keepdims=True), 1e-6)
+
+
+def _grids(blob: bytes) -> tuple[np.ndarray, np.ndarray]:
+    """BLOB -> (váhy V, mriežky V×VGRID×VGRID float32)."""
+    raw = np.frombuffer(blob, dtype=np.uint8).reshape(-1, VIEW_BYTES)
+    return raw[:, 0].astype(np.float32) / 255, raw[:, 1:].reshape(-1, VGRID, VGRID).astype(np.float32)
 
 
 class ViewIndex:
-    """Všetky pohľady všetkých výkresov v jednej matici – rýchle hľadanie podobných."""
+    """Všetky pohľady všetkých výkresov v jednej matici – rýchle hľadanie podobných.
 
-    def __init__(self, items: list[list[tuple[float, bytes]]]):
-        self.n = len(items)
-        owner, weight, vecs = [], [], []
-        for i, views in enumerate(items):
-            for wgt, fp in views:
-                owner.append(i)
-                weight.append(wgt)
-                vecs.append(_norm(_vview(fp)))
-        self.owner = np.array(owner, dtype=np.int64)
-        self.weight = np.array(weight, dtype=np.float32)
-        self.mat = np.stack(vecs) if vecs else np.zeros((0, VGRID * VGRID), np.float32)
+    blobs: odtlačky (pack()) – každý aspoň jeden pohľad. Matica je v int8 s mierkou pre každý
+    riadok (štvrtina pamäte oproti float32), počíta sa po blokoch vo float32.
+    """
+    CHUNK = 32768
 
-    def search(self, views: list[tuple[float, bytes]]) -> np.ndarray:
-        """Podobnosť (0..1) hľadaného listu ku každému výkresu v indexe."""
-        if not views or not len(self.owner):
-            return np.zeros(self.n)
-        qw = np.array([w for w, _ in views], dtype=np.float32)
-        q = np.stack([_norm(s) for _, fp in views for s in _syms(_vview(fp))])  # (Q*8) × D
-        s = (self.mat @ q.T).reshape(len(self.owner), len(views), 8).max(axis=2)  # V × Q
-        s = np.clip(s, 0, 1)
+    def __init__(self, blobs: list[bytes]):
+        self.n = len(blobs)
+        counts = np.array([len(b) // VIEW_BYTES for b in blobs], dtype=np.int64)
+        self.starts = np.concatenate([[0], np.cumsum(counts)[:-1]]) if self.n else np.zeros(0, np.int64)
+        weight, grids = _grids(b"".join(blobs)) if self.n else (np.zeros(0, np.float32), None)
+        self.weight = weight
+        self.mat = np.zeros((len(weight), VGRID * VGRID), np.int8)
+        self.scale = np.zeros(len(weight), np.float32)
+        for a in range(0, len(weight), self.CHUNK):   # po blokoch – menej dočasnej pamäte
+            g = _blur(grids[a:a + self.CHUNK])
+            v = _norm_rows(g.reshape(len(g), -1))
+            sc = np.maximum(np.abs(v).max(axis=1), 1e-6) / 127
+            self.mat[a:a + self.CHUNK] = np.round(v / sc[:, None]).astype(np.int8)
+            self.scale[a:a + self.CHUNK] = sc
+
+    def search(self, blob: bytes) -> np.ndarray:
+        """Podobnosť (0..1) hľadaného listu (pack()) ku každému výkresu v indexe."""
+        if not blob or not self.n:
+            return np.zeros(self.n, np.float32)
+        qw, qg = _grids(blob)
+        nq = len(qw)
+        g = _blur(qg)
+        syms = [np.rot90(x, k, axes=(1, 2)) for x in (g, g[:, :, ::-1]) for k in range(4)]
+        q = _norm_rows(np.stack(syms, axis=1).reshape(nq * 8, -1)).T.astype(np.float32)  # D × (Q*8)
+        s = np.empty((len(self.weight), nq), np.float32)
+        for a in range(0, len(s), self.CHUNK):
+            part = (self.mat[a:a + self.CHUNK].astype(np.float32) @ q) * self.scale[a:a + self.CHUNK, None]
+            s[a:a + self.CHUNK] = part.reshape(len(part), nq, 8).max(axis=2)
+        np.clip(s, 0, 1, out=s)
         # smer hľadaný -> výkres: pre každý hľadaný pohľad najlepší pohľad výkresu
-        best_q = np.zeros((self.n, len(views)), dtype=np.float32)
-        np.maximum.at(best_q, self.owner, s)
-        fwd = best_q @ qw
+        fwd = np.maximum.reduceat(s, self.starts, axis=0) @ qw
         # smer výkres -> hľadaný: každý pohľad výkresu má mať pár v hľadanom
-        back = np.zeros(self.n, dtype=np.float32)
-        np.add.at(back, self.owner, s.max(axis=1) * self.weight)
+        back = np.add.reduceat(s.max(axis=1) * self.weight, self.starts)
         return np.minimum(fwd, back)
 
 
@@ -307,7 +320,7 @@ def _test(root: str):
             print(f"CHYBA {p}: {e}")
             continue
         if v:
-            items.append(v)
+            items.append(pack(v))
             names.append(p)
     print(f"Spolu {len(items)} výkresov za {time.perf_counter() - t:.1f}s\n")
     idx = ViewIndex(items)

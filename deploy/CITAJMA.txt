@@ -19,6 +19,9 @@ Ovládanie
   rozsah Aktuálna zákazka / Celé L:\.
 - Zoznam / Galéria – galéria ukazuje veľké náhľady.
 - Dvojklik = otvoriť súbor, tlačidlo „Otvoriť priečinok“ ho ukáže v Prieskumníkovi.
+- Podobné výkresy: v detaile PDF tlačidlo „Podobné výkresy“ – nájde výkresy s podobnými
+  pohľadmi v celom L:\ (aj skeny, otočené, iné revízie). Najlepšie v Galérii. Esc = späť.
+  Odtlačky výkresov sa dopočítavajú postupne pri skenoch (stavový riadok dole: „odtlačky X / Y“).
 - Šírky panelov a stĺpcov sa dajú ťahať, poloha okna sa pamätá.
 
 Údaje
@@ -43,4 +46,6 @@ Automatický sken – ikona pri hodinách: spusti raz  ikona_skenu.bat
   Po novej verzii exe spusti ikona_skenu.bat znova. Zrušenie:  ikona_skenu.bat zrus
   Lokálny log: %LOCALAPPDATA%\Lupa\lupa_scan.log
 
-Nastavenia: lupa.ini vedľa exe (vzor lupa.ini.example) – cesta ku koreňu a k databáze.
+Nastavenia: lupa.ini vedľa exe (vzor lupa.ini.example) – cesta ku koreňu a k databáze,
+  ktoré priečinky v koreni L:\ sú zákazníci (customers = [0-9]*, OD*) a čo vynechať (exclude).
+  Skener číta aj lupa.ini vedľa databázy (L:\_Lupa\lupa.ini) – zmena platí od ďalšieho skenu.

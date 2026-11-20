@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 # Verzia aplikácie – zvyšovať pri každom vydaní (zobrazuje sa v UI, ikone skenu, logu a vo vlastnostiach exe)
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 
 # Priečinok programu (pri PyInstaller exe = priečinok s exe)
 if getattr(sys, "frozen", False):
@@ -23,18 +23,47 @@ _DEFAULTS = {
     "db": "lupa.db",
     "recent_days": "14",
     "prints_minutes": "30",
+    "customers": "",
+    "exclude": "",
 }
 
 
-def _load_ini() -> dict:
-    cp = configparser.ConfigParser()
+def _load_ini(*paths: Path) -> dict:
+    """Predvolené hodnoty prepísané súbormi v poradí (neskorší má prednosť)."""
+    cp = configparser.ConfigParser(interpolation=None)
     cp.read_dict({"lupa": _DEFAULTS})
-    if INI_PATH.exists():
-        cp.read(INI_PATH, encoding="utf-8")
+    for p in paths:
+        try:
+            if p.exists():
+                # utf-8-sig: Poznámkový blok / PowerShell môžu uložiť súbor s BOM
+                cp.read(p, encoding="utf-8-sig")
+        except (OSError, configparser.Error):
+            # sieťový disk nedostupný / pokazený súbor – platí to, čo sa načítalo (program nesmie spadnúť)
+            pass
     return dict(cp["lupa"])
 
 
-_ini = _load_ini()
+_ini = _load_ini(INI_PATH)
+
+
+def _patterns(s: str) -> list[str]:
+    """'[0-9]*, OD*' -> ['[0-9]*', 'od*'] (vzory pre fnmatch, malými písmenami)."""
+    return [p.strip().lower() for p in s.split(",") if p.strip()]
+
+
+def scan_settings(db_path: Path) -> dict:
+    """Nastavenia skenu: lupa.ini vedľa programu, prepísané lupa.ini vedľa databázy.
+
+    Ikona skenu beží z kópie v %LOCALAPPDATA%\\Lupa\\bin – spoločné nastavenia sú preto
+    v L:\\_Lupa\\lupa.ini vedľa DB.
+    """
+    ini = _load_ini(INI_PATH, db_path.parent / "lupa.ini")
+    return {
+        "recent_days": int(ini["recent_days"]),
+        "prints_minutes": float(ini["prints_minutes"]),
+        "customers": _patterns(ini["customers"]),
+        "exclude": _patterns(ini["exclude"]),
+    }
 
 
 def _resolve(p: str) -> Path:
@@ -48,11 +77,8 @@ THUMBS_DIR = LOCAL_DIR / "thumbs"
 
 ROOT = _resolve(_ini["root"])
 DB_PATH = _resolve(_ini["db"])
-RECENT_DAYS = int(_ini["recent_days"])
-# Odtlačky výkresov (podobné výkresy): najviac N minút výpočtu na jeden sken, 0 = vypnuté.
-# Prvý prechod celého L:\ sa tak rozloží do viacerých skenov.
-PRINTS_MINUTES = float(_ini["prints_minutes"])
-PRINTS_MAX_MB = 100  # väčšie PDF sa preskočia (obrovské skeny)
+# recent_days, prints_minutes, customers, exclude: pre skener cez scan_settings() (aj lupa.ini vedľa DB)
+PRINTS_MAX_MB = 100  # odtlačky výkresov: väčšie PDF sa preskočia (obrovské skeny)
 FULL_EVERY_DAYS = 7  # scanner --auto: úplný sken, ak posledný bol pred viac ako N dňami
 
 # ---------------------------------------------------------------------------

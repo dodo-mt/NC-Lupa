@@ -82,6 +82,11 @@ Mapovanie drž na jednom mieste (`config.py`), aby sa dalo ľahko rozšíriť.
   nemusí byť pripojený) + odkaz v Po spustení s `--root`/`--db`. Beží na PC používateľa.
 - Log skenera: vždy lokálne `%LOCALAPPDATA%\Lupa\lupa_scan.log` + vedľa DB (rotácia 2 MB × 3).
 - Skener pri chybe čítania priečinka **nič nemaže** (výpadok siete ≠ prázdny priečinok).
+- **Zákazníci v koreni**: `customers` / `exclude` v `lupa.ini` (vzory fnmatch, čiarkou). Skener číta
+  `lupa.ini` vedľa programu a potom vedľa DB (`config.scan_settings`) – ikona skenu beží z kópie
+  v `%LOCALAPPDATA%`, spoločné nastavenia sú v `L:\_Lupa\lupa.ini`. `--only` filter obchádza.
+- DB sa otvára cez `db.ro_uri()` – `Path.as_uri()` pre sieťovú cestu dá `file://server/...`,
+  čo SQLite odmietne („invalid uri authority“); správne je `file:////server/share/...`.
 
 ### Pravidlá
 
@@ -106,16 +111,17 @@ prints(path, size, modified, version, views)   -- odtlačky PDF, views = odtlack
 - Hľadanie podľa časti názvu: `LIKE '%…%'` (pri raste zvážiť FTS5).
 - Odhad veľkosti: ~150 000 súborov → desiatky MB.
 
-## Stav projektu (aktuálne 1.2.0)
+## Stav projektu (aktuálne 1.3.0)
 
 Hotové: verzia 1 (nižšie) + náhľady, galéria, NC/TXT náhľad, kontrola úplnosti, exe, ikona skenu
-pri hodinách, stavový riadok, kontextové menu stromu. Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`.
+pri hodinách, stavový riadok, kontextové menu stromu. Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`, `v1.3.0`.
 
 **Čaká sa na používateľa**: nasadenie `dist\Lupa\` na `L:\_Lupa\`, `ikona_skenu.bat`, prvý úplný sken
 celého `L:\`. Potom overiť: trvanie skenu, či vlastníci = ozajstné mená kolegov, chyby v logu.
 
-**Ďalší krok**: „Nájdi podobné výkresy“ (bod 5 nižšie) – odtlačky v skeneri hotové, chýba UI
-(tlačidlo v detaile súboru → `odtlacky.ViewIndex` nad tabuľkou `prints`). Možné drobnosti: vlastné vykreslenie
+**Podobné výkresy** (bod 5): odtlačky v skeneri + UI hotové (tlačidlo v detaile PDF, výsledok
+v zozname/galérii so stĺpcom Podobnosť, Esc = späť; `Api.similar`, index v pamäti do zmeny DB).
+**Ďalší krok**: overiť na ostrých dátach L:\ (podobné výkresy, filter zákazníkov). Možné drobnosti: vlastné vykreslenie
 náhľadu STL (Windows ho bez doplnku nevie), tlačidlo „Obnoviť“ v Lupe bez reštartu.
 
 ## Verzia 1 – rozsah (hotové)
@@ -133,7 +139,7 @@ náhľadu STL (Windows ho bez doplnku nevie), tlačidlo „Obnoviť“ v Lupe be
 2. ✅ **Galéria** – mriežka náhľadov, posuvník veľkosti, triedenie.
 3. ✅ Kontrola **úplnosti zákazky** (Model / PDF / CAM / NC / Listy) – stav v strome + štítky.
 4. ✅ Exe na `L:\_Lupa\` (`build.py`) + ikona skenu pri hodinách (namiesto Plánovača úloh).
-5. ⏳ **Nájdi podobné výkresy** – offline obrazové „odtlačky“ PDF (orezať rám a pečiatku), neskôr kombinácia s rozmermi zo STP.
+5. ✅ **Nájdi podobné výkresy** – offline obrazové „odtlačky“ PDF (orezať rám a pečiatku), neskôr kombinácia s rozmermi zo STP.
    Metóda: list → pohľady (zhluky čiar) → mriežka 16×16, porovnanie v 8 symetriách, slabší z oboch smerov.
    Na vzorkách: rovnaký výkres / sken / revízia = 1. miesto; náš `drw0001` ↔ výkres zákazníka zatiaľ slabé.
 

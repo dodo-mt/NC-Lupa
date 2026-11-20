@@ -27,6 +27,8 @@ const state = {
   sortDir: 1,
   selFile: null,
   mode: 'list',        // 'list' | 'gallery'
+  similar: null,       // podobné výkresy: {id, name} hľadaného PDF, inak null
+  sortBeforeSim: null, // triedenie pred podobnými výkresmi (obnoví sa po zavretí)
 };
 
 function lsGet(k, def) {
@@ -48,7 +50,7 @@ function esc(s) {
 
 // Názov s vyznačenými hľadanými slovami
 function highlight(name) {
-  const terms = state.q.split(/\s+/).filter(Boolean);
+  const terms = state.similar ? [] : state.q.split(/\s+/).filter(Boolean);
   if (!terms.length) return esc(name);
   // slovo so * / ? = celý názov, inak časť názvu
   const toRe = (t) => {
@@ -117,7 +119,7 @@ function findCust(id) {
 
 // Výsledok obsahuje viac zákaziek (Celé L:\ alebo vybraný zákazník) → ukazovať aj zákazku
 function multiJob() {
-  return state.scope === 'all' || (state.sel && !state.sel.job);
+  return !!state.similar || state.scope === 'all' || (state.sel && !state.sel.job);
 }
 
 // Z plochého zoznamu rel_path postaví vnorený strom priečinkov
@@ -149,7 +151,7 @@ function complStatus(miss) {
 // (model a výkres bývajú v koreni zákazky, NC v podpriečinkoch pozícií).
 function renderCompl() {
   const box = $('compl');
-  if (state.scope !== 'job' || !state.sel) { box.hidden = true; return; }
+  if (state.similar || state.scope !== 'job' || !state.sel) { box.hidden = true; return; }
   if (!state.sel.job) {
     // zákazník: súhrn – koľko zákaziek je úplných
     const c = findCust(state.sel.cust);
@@ -252,6 +254,7 @@ async function selectCustomer(custId) {
 }
 
 async function applySelection(sel) {
+  leaveSimilar();
   state.sel = sel;
   state.scope = 'job';
   state.selFile = null;
@@ -403,7 +406,17 @@ async function refresh() {
   const seq = ++reqSeq;
   const types = selectedTypes();
   let res;
-  if (types && types.length === 0) {
+  if (state.similar) {
+    res = await api.similar(state.similar.id, state.owner);
+    if (seq !== reqSeq) return;
+    if (!res.ok) {
+      toast(res.error);
+      leaveSimilar();
+      return refresh();
+    }
+    res.total = res.rows.length;
+    res.limit = 0;
+  } else if (types && types.length === 0) {
     res = { rows: [], total: 0, limit: 0 };
   } else {
     res = await api.search({
@@ -432,7 +445,12 @@ function renderHead() {
   const cust = state.sel && !state.sel.job ? findCust(state.sel.cust) : null;
   let crumb = '';
   let heading = '';
-  if (all) {
+  if (state.similar) {
+    crumb = 'Podobné výkresy';
+    heading = `Podobné ako <span class="mono h-q">${esc(state.similar.name)}</span>` +
+      '<button type="button" class="iconbtn h-close" id="simClose" title="Zavrieť podobné výkresy (Esc)" aria-label="Zavrieť podobné výkresy">' +
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></button>';
+  } else if (all) {
     crumb = `Celé ${state.meta.root}`;
     heading = esc(state.q ? `Hľadanie „${state.q}“` : 'Všetky súbory');
   } else if (cust) {
@@ -449,11 +467,17 @@ function renderHead() {
   }
   $('crumb').textContent = crumb;
   $('heading').innerHTML = heading;
+  if ($('simClose')) $('simClose').onclick = () => exitSimilar();
   renderCompl();
 
   const n = state.total;
   let cnt = '';
-  if (all || state.sel) {
+  if (state.similar) {
+    const k = n - 1;
+    cnt = k ? `${k} ${k === 1 ? 'podobný výkres' : k >= 2 && k <= 4 ? 'podobné výkresy' : 'podobných výkresov'}`
+      : 'Nenašiel sa žiadny podobný výkres';
+    if (state.owner) cnt += ` · vlastník ${state.owner}`;
+  } else if (all || state.sel) {
     cnt = `${n} ${plural(n)}`;
     if (n > state.files.length) cnt += ` · zobrazených ${state.files.length} najnovších`;
   }
@@ -470,7 +494,7 @@ function sortedFiles() {
   return [...state.files].sort((a, b) => {
     let r;
     if (k === 'ftype') r = typeOrder(a.ftype) - typeOrder(b.ftype);
-    else if (k === 'size' || k === 'created' || k === 'modified') r = (a[k] || 0) - (b[k] || 0);
+    else if (k === 'size' || k === 'created' || k === 'modified' || k === 'sim') r = (a[k] || 0) - (b[k] || 0);
     else if (k === 'folder') r = loc(a).localeCompare(loc(b), 'sk', { numeric: true, sensitivity: 'base' });
     else r = String(a[k] || '').localeCompare(String(b[k] || ''), 'sk', { numeric: true, sensitivity: 'base' });
     if (r === 0 && k !== 'name') r = a.name.localeCompare(b.name, 'sk', { numeric: true, sensitivity: 'base' });
@@ -489,11 +513,14 @@ function renderFiles() {
   }
   $('gallery').innerHTML = '';
   const all = multiJob();
+  $('files').classList.toggle('sim-on', !!state.similar);
+  applyCols();
   $('rows').innerHTML = files.map((f) => {
     const loc = all ? (f.folder ? `${f.job} \\ ${f.folder}` : f.job) : f.folder;
     const locTitle = all ? `${f.customer} \\ ${f.job}${f.folder ? ' \\ ' + f.folder : ''}` : f.folder;
     return `<tr data-id="${f.id}"${f.id === state.selFile ? ' class="sel"' : ''}>
     <td class="c-type">${badge(f.ftype)}</td>
+    <td class="c-sim">${simCell(f)}</td>
     <td class="c-name" title="${esc(f.name)}">${highlight(f.name)}</td>
     <td class="c-folder" title="${esc(locTitle)}">${esc(loc)}</td>
     <td class="c-owner">${esc(f.owner)}</td>
@@ -506,6 +533,56 @@ function renderFiles() {
     th.classList.toggle('asc', th.dataset.sort === state.sortKey && state.sortDir === 1);
     th.classList.toggle('desc', th.dataset.sort === state.sortKey && state.sortDir === -1);
   }
+}
+
+// --- podobné výkresy -------------------------------------------------------
+function simPct(f) {
+  return Math.round((f.sim || 0) * 100);
+}
+
+function simCell(f) {
+  if (!state.similar) return '';
+  if (f.query) return '<span class="sim-q">hľadaný</span>';
+  const p = simPct(f);
+  return `<span class="simbar" aria-hidden="true"><i style="width:${p}%"></i></span><span class="sim-v">${p} %</span>`;
+}
+
+function simTag(f) {
+  return f.query ? '<span class="sim-q">hľadaný</span>' : `<span class="g-sim">${simPct(f)} %</span>`;
+}
+
+async function startSimilar(f) {
+  if (!state.similar) state.sortBeforeSim = { key: state.sortKey, dir: state.sortDir };
+  state.similar = { id: f.id, name: f.name };
+  state.sortKey = 'sim';
+  state.sortDir = -1;
+  state.selFile = f.id;
+  $('galSortSim').hidden = false;
+  syncGalSort();
+  $('count').textContent = 'Hľadám podobné výkresy…';
+  await refresh();
+  $('tableWrap').scrollTop = 0;
+  $('galleryWrap').scrollTop = 0;
+}
+
+// Ukončí režim podobných výkresov (bez obnovenia zoznamu)
+function leaveSimilar() {
+  if (!state.similar) return;
+  state.similar = null;
+  if (state.sortBeforeSim) {
+    state.sortKey = state.sortBeforeSim.key;
+    state.sortDir = state.sortBeforeSim.dir;
+  }
+  $('galSortSim').hidden = true;
+  syncGalSort();
+}
+
+function exitSimilar() {
+  if (!state.similar) return;
+  const keep = state.similar.id;   // späť na výkres, z ktorého sa hľadalo
+  leaveSimilar();
+  state.selFile = keep;
+  refresh();
 }
 
 function renderEmpty(files) {
@@ -540,7 +617,7 @@ function renderGallery(files) {
     return `<div class="card${f.id === state.selFile ? ' sel' : ''}" data-id="${f.id}" title="${esc(f.name)}">
       <div class="g-thumb" data-id="${f.id}"><span class="pv-msg"></span></div>
       <div class="g-name">${badge(f.ftype)}<span>${highlight(f.name)}</span></div>
-      <div class="g-sub">${esc(sub)}${sub ? ' · ' : ''}${date} · ${esc(f.owner)}</div>
+      <div class="g-sub">${state.similar ? simTag(f) + ' · ' : ''}${esc(sub)}${sub ? ' · ' : ''}${date} · ${esc(f.owner)}</div>
     </div>`;
   }).join('');
 
@@ -649,6 +726,7 @@ function renderDetail() {
     <dl class="d-meta">
       <dt>Zákazník</dt><dd>${esc(f.customer)}</dd>
       <dt>Zákazka</dt><dd>${esc(f.job)}${f.folder ? ' \\ ' + esc(f.folder) : ''}</dd>
+      ${state.similar ? `<dt>Podobnosť</dt><dd>${f.query ? 'hľadaný výkres' : `${simPct(f)} %`}</dd>` : ''}
       <dt>Vlastník</dt><dd><strong>${esc(f.owner)}</strong></dd>
       <dt>Vytvorený</dt><dd>${fmtDate(f.created)}</dd>
       <dt>Zmenený</dt><dd>${fmtDate(f.modified)}</dd>
@@ -658,11 +736,15 @@ function renderDetail() {
       <button type="button" class="btn primary" id="btnOpen">Otvoriť</button>
       <button type="button" class="btn" id="btnFolder">Otvoriť priečinok</button>
       ${multiJob() ? '<button type="button" class="btn" id="btnGoto" style="flex-basis:100%">Prejsť na zákazku</button>' : ''}
+      ${f.ftype === 'PDF' && !f.query ? `<button type="button" class="btn btn-icon" id="btnSimilar" style="flex-basis:100%" title="Nájde výkresy s podobnými pohľadmi v celom ${esc(state.meta.root)}">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1"></rect><rect x="13" y="13" width="8" height="8" rx="1"></rect><path d="M15 3h5a1 1 0 0 1 1 1v5M9 21H4a1 1 0 0 1-1-1v-5"></path></svg>
+        Podobné výkresy</button>` : ''}
     </div>`;
   $('btnOpen').onclick = () => openFile(f.id);
   $('preview').ondblclick = () => openFile(f.id);
   $('btnFolder').onclick = () => openFolder(f.id);
   if ($('btnGoto')) $('btnGoto').onclick = () => gotoJob(f.job_id, f.folder);
+  if ($('btnSimilar')) $('btnSimilar').onclick = () => startSimilar(f);
   loadThumb(f.id);
 }
 
@@ -716,7 +798,11 @@ function bind() {
     renderTree();
   });
   document.addEventListener('mousedown', (e) => { if (!e.target.closest('#ctx')) hideCtx(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideCtx(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!$('ctx').hidden) { hideCtx(); return; }
+    if (state.similar && $('ownerDrop').hidden && e.target.id !== 'q') exitSimilar();
+  });
   $('tree').addEventListener('scroll', hideCtx);
   window.addEventListener('blur', hideCtx);
 
@@ -725,6 +811,7 @@ function bind() {
   $('q').addEventListener('input', () => {
     state.q = $('q').value.trim();
     $('qClear').hidden = !$('q').value;
+    leaveSimilar();
     runSearch();
   });
   $('q').addEventListener('keydown', (e) => {
@@ -760,7 +847,8 @@ function bind() {
   });
   for (const b of document.querySelectorAll('.seg button[data-scope]')) {
     b.addEventListener('click', () => {
-      if (state.scope === b.dataset.scope) return;
+      if (state.scope === b.dataset.scope && !state.similar) return;
+      leaveSimilar();
       state.scope = b.dataset.scope;
       renderScope();
       renderTree();
@@ -897,7 +985,7 @@ function bindResizers() {
 
 // --- ťahateľné stĺpce tabuľky ---------------------------------------------
 // Názov nemá pevnú šírku – vypĺňa voľné miesto; jeho ťahaním sa mení minimum.
-const COL_DEFAULTS = { ftype: 64, name: 300, folder: 200, owner: 100, created: 130, modified: 130, size: 84 };
+const COL_DEFAULTS = { ftype: 64, sim: 120, name: 300, folder: 200, owner: 100, created: 130, modified: 130, size: 84 };
 const COL_MIN = 40;
 let colW = { ...COL_DEFAULTS };
 let colDragged = false; // po ťahaní potlačiť klik = triedenie
@@ -906,7 +994,7 @@ function applyCols() {
   let sum = 0;
   for (const th of document.querySelectorAll('.files th')) {
     const k = th.dataset.sort;
-    sum += colW[k];
+    if (k !== 'sim' || state.similar) sum += colW[k];
     th.style.width = k === 'name' ? '' : `${colW[k]}px`;
   }
   document.querySelector('table.files').style.minWidth = `${sum}px`;
@@ -1054,7 +1142,8 @@ function renderStatus() {
   const c = m.counts;
   const num = (n) => n.toLocaleString('sk-SK');
   $('stLeft').innerHTML = `<span class="mono">${esc(m.root)}</span>` +
-    (c ? ` · ${num(c.customers)} zákazníkov · ${num(c.jobs)} zákaziek · ${num(c.files)} súborov` : '');
+    (c ? ` · ${num(c.customers)} zákazníkov · ${num(c.jobs)} zákaziek · ${num(c.files)} súborov` : '') +
+    (c && c.pdfs ? ` · <span title="Výkresy (PDF) s odtlačkom pre Podobné výkresy – dopočítavajú sa postupne pri skenoch">odtlačky ${num(c.prints)} / ${num(c.pdfs)}</span>` : '');
   const s = m.last_scan;
   if (!m.db_ok) {
     $('stRight').innerHTML = '<span class="stale">Databáza neexistuje</span>';
@@ -1073,7 +1162,19 @@ function clearSearch() {
   if (state.q) { state.q = ''; refresh(); }
 }
 
+// Chyba pri štarte (napr. DB sa nedá otvoriť) – ukázať v okne, nie nechať prázdne
 async function init() {
+  try {
+    await initApp();
+  } catch (e) {
+    const msg = (e && (e.message || e.toString())) || 'neznáma chyba';
+    $('empty').hidden = false;
+    $('empty').textContent = `Lupa sa nepodarilo načítať: ${msg}`;
+    $('heading').textContent = 'Chyba';
+  }
+}
+
+async function initApp() {
   api = window.pywebview.api;
   const meta = await api.get_meta();
   state.meta = meta;

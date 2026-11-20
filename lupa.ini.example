@@ -1,5 +1,7 @@
-; Skopíruj ako lupa.ini (vedľa scanner.py / app.py) a uprav cesty.
+; Skopíruj ako lupa.ini vedľa Lupa.exe (na L:\_Lupa\ je to aj vedľa lupa.db) a uprav.
 ; lupa.ini sa na git nedáva.
+; Skener (aj ikona pri hodinách) číta lupa.ini vedľa programu a potom lupa.ini vedľa databázy –
+; ten vedľa databázy má prednosť. Spoločné nastavenia sú teda v L:\_Lupa\lupa.ini.
 
 [lupa]
 ; koreň so zákazkami
@@ -10,3 +12,12 @@ db = lupa.db
 recent_days = 14
 ; odtlačky výkresov (Podobné výkresy): najviac N minút výpočtu na jeden sken, 0 = vypnuté
 prints_minutes = 30
+
+; Ktoré priečinky v koreni sú zákazníci. Vzory oddelené čiarkou, * = čokoľvek, ? = jeden znak,
+; [0-9] = číslica, veľké/malé písmená nehrajú rolu. Prázdne = všetky priečinky.
+; Vynechaní zákazníci sa pri ďalšom skene z databázy odstránia (na disku sa nič nemení).
+;   [0-9]*  = začína číslicou (100009-Kuka, 0000000-INDAT)
+;   OD*     = staré značenie (OD067)
+customers = [0-9]*, OD*
+; Vynechať aj tieto (platí navyše ku customers), napr. skryté a koše:
+exclude = .*, AI_RecycleBin

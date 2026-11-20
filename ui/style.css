@@ -662,6 +662,37 @@ td.c-date, td.c-size { color: var(--muted-2); font-variant-numeric: tabular-nums
 .btn:hover { background: #f9fafb; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn.primary:hover { background: #1e40af; }
+.btn-icon { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.btn-icon svg { color: var(--accent); }
+
+/* --- podobné výkresy --- */
+.files:not(.sim-on) .c-sim { display: none; }
+.c-sim { width: 120px; }
+td.c-sim { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.simbar {
+  display: inline-block;
+  width: 52px;
+  height: 6px;
+  margin-right: 8px;
+  vertical-align: middle;
+  background: var(--line-soft);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.simbar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; }
+.sim-v { font-size: 12px; color: var(--muted-2); }
+.sim-q {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--accent-soft);
+  color: #1e3a8a;
+}
+.g-sim { font-weight: 600; color: var(--accent); }
+.h-q { font-size: 16px; font-weight: 600; }
+.h-close { margin-left: 6px; vertical-align: middle; }
 
 /* --- hlásenie --- */
 .toast {
