@@ -162,6 +162,9 @@ Schválený návrh UI (maketa): https://claude.ai/artifact/MHEAKvNtdfXvU9EaucAA1
   uložené v `%LOCALAPPDATA%\Lupa\window.json`). Ak monitor chýba, otvorí sa v predvolenej polohe.
 - Panely sú ťahateľné (viditeľný úchyt s bodkami), šírka sa pamätá. Tabuľky sa nezmačkávajú – radšej vodorovný posuvník.
 - Hľadanie: viac slov = AND; slovo s `*` / `?` je vzor na celý názov (`cnc_vyk*.pdf`), inak časť názvu.
+- Hľadanie čísla zákazky/zákazníka (`OD21750` = `OD00021750`, bez úvodných núl) rozbalí a zvýrazní
+  zhodu v strome (najviac 10), Enter / klik = otvoriť zákazku celú (hľadanie sa vymaže).
+  Rozbalenie z hľadania sa pri ďalšom hľadaní zbalí (`state.autoOpen`).
 
 ## Súvisiace nástroje používateľa
 

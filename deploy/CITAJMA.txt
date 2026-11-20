@@ -15,6 +15,8 @@ Ovládanie
   (Model, PDF, CAM, NC, Listy).
 - Hľadanie (Ctrl+F): časť názvu, viac slov = všetky musia sedieť.
   Hviezdička * a otáznik ? = vzor na celý názov, napr.  cnc_vyk*.pdf
+  Číslo zákazky (OD21750, 9712) alebo zákazníka (100919) sa hneď nájde aj v strome –
+  rozbalí sa a zvýrazní (úvodné nuly netreba). Enter alebo klik na ňu = otvoriť celú zákazku.
 - Filtre: vlastník (kto súbor vytvoril), typ (farebné chipy, Ctrl+klik = len jeden),
   rozsah Aktuálna zákazka / Celé L:\.
 - Zoznam / Galéria – galéria ukazuje veľké náhľady.

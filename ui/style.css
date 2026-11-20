@@ -371,6 +371,10 @@ body.resizing .resizer.drag, body.resizing .col-grip.drag { pointer-events: auto
 }
 .node:hover { background: #eef2f7; }
 .node.sel { background: #dbeafe; color: #1e3a8a; font-weight: 600; }
+/* zákazka / zákazník nájdený hľadaním čísla – rovnaká žltá ako <mark> v zozname */
+.node.hit { background: #fef9c3; box-shadow: inset 3px 0 0 #eab308; font-weight: 600; }
+.node.hit:hover { background: #fef08a; }
+.node.hit.sel { background: #dbeafe; box-shadow: inset 3px 0 0 #eab308; }
 .node .tw {
   width: 16px;
   flex: none;
