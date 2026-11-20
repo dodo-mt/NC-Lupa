@@ -115,15 +115,27 @@ prints(path, size, modified, version, views)   -- odtlačky PDF, views = odtlack
 ## Stav projektu (aktuálne 1.3.1)
 
 Hotové: verzia 1 (nižšie) + náhľady, galéria, NC/TXT náhľad, kontrola úplnosti, exe, ikona skenu
-pri hodinách, stavový riadok, kontextové menu stromu. Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`, `v1.3.0`, `v1.3.1`.
+pri hodinách, stavový riadok, kontextové menu stromu, podobné výkresy, filter zákazníkov v `lupa.ini`,
+hľadanie čísla zákazky v strome, typy XLS/DOC zvlášť.
+Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`, `v1.3.0`, `v1.3.1` (pushnuté na GitHub `origin/main`).
 
-**Čaká sa na používateľa**: nasadenie `dist\Lupa\` na `L:\_Lupa\`, `ikona_skenu.bat`, prvý úplný sken
-celého `L:\`. Potom overiť: trvanie skenu, či vlastníci = ozajstné mená kolegov, chyby v logu.
+**Ostré nasadenie (20.11.2026)**: DB `L:\_Lupa\lupa.db` na sieťovom disku (~180 MB).
+Prvý úplný sken L:\ (ešte skener 1.0 na inom PC) – ~1 h, 33 600+ zákaziek / 237 zákazníkov, bez chýb.
+Lupa 1.2.0 tam mala prázdne okno (DB na sieti – `db.ro_uri`), opravené v 1.3.0 a overené používateľom.
+
+**Čaká sa na používateľa**: nasadiť 1.3.1 (`dist\Lupa\` → `L:\_Lupa\`), do `L:\_Lupa\lupa.ini`
+`customers = [0-9]*, OD*` + `exclude = .*, AI_RecycleBin`, na PC so skenerom znova `ikona_skenu.bat`
+(beží tam stará 1.0 – nepočíta odtlačky, nepozná filter). Potom overiť: postup odtlačkov (stavový riadok
+„odtlačky X / Y“, rýchlosť cez sieť v `lupa_scan.log`), podobné výkresy na ostrých dátach, vlastníci
+= ozajstné mená kolegov. V koreni L:\ sú aj nezákaznícke priečinky (zálohy strojov, Hypermill,
+dokumentácia…) – používateľ rozhodne, či ich pridá do `customers`.
 
 **Podobné výkresy** (bod 5): odtlačky v skeneri + UI hotové (tlačidlo v detaile PDF, výsledok
 v zozname/galérii so stĺpcom Podobnosť, Esc = späť; `Api.similar`, index v pamäti do zmeny DB).
-**Ďalší krok**: overiť na ostrých dátach L:\ (podobné výkresy, filter zákazníkov). Možné drobnosti: vlastné vykreslenie
-náhľadu STL (Windows ho bez doplnku nevie), tlačidlo „Obnoviť“ v Lupe bez reštartu.
+Slabé miesto: náš `drw0001` ↔ výkres zákazníka (iné rozloženie pohľadov) – neskôr kombinácia s STP.
+
+**Ďalšie možné kroky**: vlastné vykreslenie náhľadu STL (Windows ho bez doplnku nevie),
+tlačidlo „Obnoviť“ v Lupe bez reštartu.
 
 ## Verzia 1 – rozsah (hotové)
 
