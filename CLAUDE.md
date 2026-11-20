@@ -17,8 +17,11 @@ L:\<Zákazník>\<Zákazka>\[voliteľne 1+ medziúrovne: pozícia / číslo / tex
 ```
 
 - 1. úroveň = zákazník, 2. úroveň = zákazka.
-- Medziúrovne nemajú pevnú hĺbku → **pozícia** = priečinok, ktorý priamo obsahuje typické súbory
-  (pdf, stp/step, hmc, ppf, NC programy). Ak medziúroveň nie je, pozícia = zákazka.
+- Medziúrovne nemajú pevnú hĺbku a pomenovanie je rôzne (`DVA KUSY`, `OP20`, `POLOTOVAR`, `21750-1A`, `3DF`…)
+  → **pozícia = skutočný priečinok** v zákazke (tabuľka `positions`, koreň zákazky má `rel_path = ''`).
+  Žiadne hádanie, čo je „pozícia“; strom ukazuje reálne podpriečinky. Klik na zákazku ukáže všetky jej súbory.
+- **Skener preskakuje** (zoznamy v `config.py`): priečinky `POF\`, `VNC\`, `STOCK\` (interné dáta hyperMILL),
+  súbory `Thumbs.db`, `desktop.ini`, prípony `.bak .hmc_bak .dwl .dwl2 .log .tmp`.
 - NC programy bývajú v podpriečinku `NC\` (triedené po strojoch: eVo 80, monoBLOCK H640, DMC 160, monoBLOCK 840D).
 - Rádovo **tisíce zákaziek**, pribúda pár denne.
 
@@ -31,7 +34,7 @@ L:\<Zákazník>\<Zákazka>\[voliteľne 1+ medziúrovne: pozícia / číslo / tex
 | HMC – hyperMILL | .hmc | #ffedd5 / #7c2d12 |
 | PPF – hyperMILL | .ppf | #fef3c7 / #78350f |
 | NC – programy | .h .nc .mpf .spf | #dcfce7 / #14532d |
-| XLS – listy | .xlsx .xls | #ccfbf1 / #134e4a |
+| XLS – listy | .xlsx .xls .doc .docx | #ccfbf1 / #134e4a |
 | Ostatné | * | #f3f4f6 / #374151 |
 
 Mapovanie drž na jednom mieste (`config.py`), aby sa dalo ľahko rozšíriť.
@@ -42,7 +45,10 @@ Mapovanie drž na jednom mieste (`config.py`), aby sa dalo ľahko rozšíriť.
 - **Skener** (`scanner.py`): prejde `L:\`, zapíše do **SQLite** databázy.
   - `os.scandir` (rýchle), žiadne `os.walk` so `stat` navyše.
   - **Vlastník súboru** = „kto to robil“: `win32security.GetFileSecurity(... OWNER_SECURITY_INFORMATION)` → `LookupAccountSid` → doménové meno (napr. `pnovak`). Pri chybe práv ulož `?`, nepadaj.
-  - **Inkrementálny sken**: ulož `mtime` priečinkov; denne prechádzaj len zákazníkov/zákazky, ktorých `mtime` sa zmenil, + zákazky upravené za posledných N dní. Prepínač `--full` pre úplný sken (raz týždenne).
+  - **Inkrementálny sken**: ulož `mtime` priečinkov; zoznam zákaziek každého zákazníka sa číta vždy (lacné),
+    znova sa skenujú len zákazky nové, so zmeneným `mtime` alebo so zmenou za posledných N dní (`jobs.last_change`, `recent_days` v `lupa.ini`).
+    Zákazka sa skenuje vždy celá (zmaž + vlož nanovo). Prepínač `--full` pre úplný sken (raz týždenne).
+  - Databáza **bez WAL** (bude na sieťovom disku). Log skenera: `lupa_scan.log` vedľa DB.
   - Spúšťanie z príkazového riadka (neskôr cez Plánovač úloh): `python scanner.py --root L:\ --db <cesta> [--full] [--only "Zákazník"]`.
 - **Aplikácia** (`app.py`): **pywebview** okno s HTML/CSS/JS rozhraním (nie prehliadač, nie server).
   - Python strana vystavuje API cez `js_api` (hľadanie, filtre, strom, otvorenie súboru).
@@ -111,3 +117,6 @@ neskôr možno (napr. „otvoriť v NC editore“).
 - Malé kroky, po každom kroku nech sa dá aplikácia spustiť a vyskúšať.
 - `requirements.txt` udržuj aktuálny (pywebview, pywin32; neskôr PyMuPDF).
 - Konfigurácia (cesta k `L:\`, cesta k DB) v `config.py` / `lupa.ini`, nie natvrdo v kóde.
+  Vzor: `lupa.ini.example`; lokálny `lupa.ini` (mimo gitu) ukazuje pri vývoji na `vzorky`.
+- Pracuj **len v adresári projektu**. Testovacie dáta sú v `vzorky\` (kópia štruktúry `L:\`, **nikdy na git**).
+- Python v `.venv` (`.venv\Scripts\python.exe`).

@@ -1,0 +1,10 @@
+; Skopíruj ako lupa.ini (vedľa scanner.py / app.py) a uprav cesty.
+; lupa.ini sa na git nedáva.
+
+[lupa]
+; koreň so zákazkami
+root = L:\
+; cesta k databáze (relatívna = voči priečinku s programom)
+db = lupa.db
+; inkrementálny sken: znova prejsť zákazky so zmenou za posledných N dní
+recent_days = 14
