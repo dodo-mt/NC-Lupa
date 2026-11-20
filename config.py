@@ -57,6 +57,7 @@ FILE_TYPES = {
     "NC": ("NC program", ["h", "nc", "mpf", "spf"], "#dcfce7", "#14532d"),
     "XLS": ("Listy", ["xlsx", "xls", "doc", "docx"], "#ccfbf1", "#134e4a"),
     "CREO": ("Creo", ["prt", "drw", "asm"], "#f9ded3", "#8a3517"),
+    "DWG": ("AutoCAD", ["dwg", "dxf"], "#ede9fe", "#4c1d95"),
 }
 
 # Prípony s číslom verzie na konci (Creo: 612234.prt.5, drw0001.drw.2).
