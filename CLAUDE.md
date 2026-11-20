@@ -102,7 +102,18 @@ scan_log(id, started, finished, mode, files_seen, errors)
 - Hľadanie podľa časti názvu: `LIKE '%…%'` (pri raste zvážiť FTS5).
 - Odhad veľkosti: ~150 000 súborov → desiatky MB.
 
-## Verzia 1 – rozsah (robíme TERAZ)
+## Stav projektu (aktuálne 1.2.0)
+
+Hotové: verzia 1 (nižšie) + náhľady, galéria, NC/TXT náhľad, kontrola úplnosti, exe, ikona skenu
+pri hodinách, stavový riadok, kontextové menu stromu. Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`.
+
+**Čaká sa na používateľa**: nasadenie `dist\Lupa\` na `L:\_Lupa\`, `ikona_skenu.bat`, prvý úplný sken
+celého `L:\`. Potom overiť: trvanie skenu, či vlastníci = ozajstné mená kolegov, chyby v logu.
+
+**Ďalší krok**: „Nájdi podobné výkresy“ (bod 5 nižšie). Možné drobnosti: vlastné vykreslenie
+náhľadu STL (Windows ho bez doplnku nevie), tlačidlo „Obnoviť“ v Lupe bez reštartu.
+
+## Verzia 1 – rozsah (hotové)
 
 1. Skener + databáza, test najprv na **jednom zákazníkovi** (`--only`).
 2. Okno: strom zákazník → zákazka → pozícia (vľavo).
@@ -111,13 +122,13 @@ scan_log(id, started, finished, mode, files_seen, errors)
 5. Filtre: vlastník, typ (farebné „chipy“), rozsah *Aktuálna zákazka / Celé L:\*.
 6. Dvojklik → otvoriť súbor. Tlačidlo „Otvoriť priečinok“.
 
-## Neskôr (postupne, každé zvlášť, až keď v1 funguje)
+## Rozšírenia (postupne, každé zvlášť)
 
-1. Pravý panel s detailom a **náhľadmi** (PDF cez PyMuPDF; ostatné cez Windows shell náhľady `IShellItemImageFactory`), cache náhľadov lokálne v `%LOCALAPPDATA%\Lupa\thumbs`.
-2. **Galéria** – mriežka veľkých náhľadov (napr. „moje PDF za posledné 2 roky“), posuvník veľkosti.
-3. Kontrola **úplnosti pozície** (STP / PDF / HMC / NC / listy) – ikonky v strome.
-4. Exe na `L:\_Lupa\`, nočný sken cez Plánovač úloh.
-5. **Nájdi podobné výkresy** – offline obrazové „odtlačky“ PDF (orezať rám a pečiatku), neskôr kombinácia s rozmermi zo STP.
+1. ✅ Pravý panel s detailom a **náhľadmi** (PDF cez PyMuPDF; ostatné cez Windows shell `IShellItemImageFactory`; NC/TXT ako text), cache v `%LOCALAPPDATA%\Lupa\thumbs`.
+2. ✅ **Galéria** – mriežka náhľadov, posuvník veľkosti, triedenie.
+3. ✅ Kontrola **úplnosti zákazky** (Model / PDF / CAM / NC / Listy) – stav v strome + štítky.
+4. ✅ Exe na `L:\_Lupa\` (`build.py`) + ikona skenu pri hodinách (namiesto Plánovača úloh).
+5. ⏳ **Nájdi podobné výkresy** – offline obrazové „odtlačky“ PDF (orezať rám a pečiatku), neskôr kombinácia s rozmermi zo STP.
 
 ## Vzhľad
 
