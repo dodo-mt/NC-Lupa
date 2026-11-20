@@ -73,8 +73,28 @@ class OwnerResolver:
 # ---------------------------------------------------------------------------
 # Skener
 # ---------------------------------------------------------------------------
-def file_ext(name: str) -> str:
-    return name.rsplit(".", 1)[1].lower() if "." in name else ""
+def split_ext(name: str) -> tuple[str, int | None]:
+    """Vráti (prípona, verzia). '612234.prt.5' -> ('prt', 5); 'a.pdf' -> ('pdf', None)."""
+    parts = name.rsplit(".", 2)
+    if len(parts) == 3 and parts[2].isdigit() and parts[1].lower() in config.VERSIONED_EXTS:
+        return parts[1].lower(), int(parts[2])
+    return (parts[-1].lower() if len(parts) > 1 else ""), None
+
+
+def drop_old_versions(cands: list) -> list:
+    """Z verzovaných súborov (Creo) nechá v priečinku len najvyššiu verziu.
+
+    cands: [(entry, ext, verzia)]
+    """
+    newest: dict[str, int] = {}
+    for entry, _ext, ver in cands:
+        if ver is not None:
+            base = entry.name.rsplit(".", 1)[0].lower()
+            newest[base] = max(newest.get(base, -1), ver)
+    return [
+        c for c in cands
+        if c[2] is None or c[2] == newest[c[0].name.rsplit(".", 1)[0].lower()]
+    ]
 
 
 def is_dir(entry: os.DirEntry) -> bool:
@@ -222,15 +242,20 @@ class Scanner:
                 (jid, rel.rsplit("\\", 1)[-1] if rel else job_name, rel, to_short(dir_long)),
             ).lastrowid
             subdirs = []
+            cands = []
             for entry in self._scandir(dir_long):
                 name = entry.name
                 if is_dir(entry):
                     if name.lower() not in config.IGNORE_DIRS:
                         subdirs.append((entry.path, f"{rel}\\{name}" if rel else name))
                     continue
-                ext = file_ext(name)
+                ext, ver = split_ext(name)
                 if name.lower() in config.IGNORE_FILES or ext in config.IGNORE_EXTS:
                     continue
+                cands.append((entry, ext, ver))
+
+            for entry, ext, _ver in drop_old_versions(cands):
+                name = entry.name
                 try:
                     st = entry.stat()
                 except OSError as e:

@@ -20,8 +20,8 @@ L:\<Zákazník>\<Zákazka>\[voliteľne 1+ medziúrovne: pozícia / číslo / tex
 - Medziúrovne nemajú pevnú hĺbku a pomenovanie je rôzne (`DVA KUSY`, `OP20`, `POLOTOVAR`, `21750-1A`, `3DF`…)
   → **pozícia = skutočný priečinok** v zákazke (tabuľka `positions`, koreň zákazky má `rel_path = ''`).
   Žiadne hádanie, čo je „pozícia“; strom ukazuje reálne podpriečinky. Klik na zákazku ukáže všetky jej súbory.
-- **Skener preskakuje** (zoznamy v `config.py`): priečinky `POF\`, `VNC\`, `STOCK\` (interné dáta hyperMILL),
-  súbory `Thumbs.db`, `desktop.ini`, prípony `.bak .hmc_bak .dwl .dwl2 .log .tmp`.
+- **Skener preskakuje** (zoznamy v `config.py`): priečinky `POF\`, `VNC\`, `STOCK\`, `3DF\` (interné dáta hyperMILL),
+  súbory `Thumbs.db`, `desktop.ini`, prípony `.bak .hmc_bak .hyperMILL .dwl .dwl2 .log .tmp`.
 - NC programy bývajú v podpriečinku `NC\` (triedené po strojoch: eVo 80, monoBLOCK H640, DMC 160, monoBLOCK 840D).
 - Rádovo **tisíce zákaziek**, pribúda pár denne.
 
@@ -35,6 +35,7 @@ L:\<Zákazník>\<Zákazka>\[voliteľne 1+ medziúrovne: pozícia / číslo / tex
 | PPF – hyperMILL | .ppf | #fef3c7 / #78350f |
 | NC – programy | .h .nc .mpf .spf | #dcfce7 / #14532d |
 | XLS – listy | .xlsx .xls .doc .docx | #ccfbf1 / #134e4a |
+| CREO – Creo | .prt.N .drw.N .asm.N (N = verzia, berie sa len najvyššia v priečinku) | #f9ded3 / #8a3517 |
 | Ostatné | * | #f3f4f6 / #374151 |
 
 Mapovanie drž na jednom mieste (`config.py`), aby sa dalo ľahko rozšíriť.

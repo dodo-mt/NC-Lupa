@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<title>Lupa</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m20 20-4.8-4.8"></path></svg>
+    <span class="brand-name">Lupa</span>
+    <span class="brand-root mono" id="root"></span>
+  </div>
+  <div class="spacer"></div>
+  <span class="scan-info" id="scanInfo"></span>
+</header>
+
+<div class="layout">
+  <nav class="tree-pane" aria-label="Zákazníci a zákazky">
+    <div class="pane-title">Zákazníci</div>
+    <div id="tree" class="tree" role="tree"></div>
+  </nav>
+
+  <main class="list-pane">
+    <div class="list-head">
+      <div>
+        <div class="crumb mono" id="crumb"></div>
+        <h1 id="heading">Vyber zákazku</h1>
+      </div>
+      <span class="count" id="count"></span>
+    </div>
+    <div class="table-wrap" id="tableWrap">
+      <table class="files" id="files">
+        <thead>
+          <tr>
+            <th data-sort="ftype" class="c-type">Typ</th>
+            <th data-sort="name" class="c-name">Názov</th>
+            <th data-sort="folder" class="c-folder">Priečinok</th>
+            <th data-sort="owner" class="c-owner">Vlastník</th>
+            <th data-sort="created" class="c-date">Vytvorený</th>
+            <th data-sort="modified" class="c-date">Zmenený</th>
+            <th data-sort="size" class="c-size">Veľkosť</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div class="empty" id="empty">Vľavo vyber zákazku alebo priečinok.</div>
+    </div>
+  </main>
+
+  <aside class="detail-pane" aria-label="Detail súboru">
+    <div id="detail" class="detail">
+      <div class="detail-empty">Klikni na súbor pre detail.<br>Dvojklik ho otvorí.</div>
+    </div>
+  </aside>
+</div>
+
+<div class="toast" id="toast" role="alert" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>
