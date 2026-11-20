@@ -347,7 +347,10 @@ function renderDetail() {
   }
   const t = state.types[f.ftype] || state.types.OTH;
   $('detail').innerHTML = `
-    <div>${badge(f.ftype)} <span style="color:var(--muted);font-size:13px">${esc(t.label)}</span></div>
+    <div class="preview" id="preview" title="Dvojklik otvorí súbor">
+      <span class="pv-msg">Načítavam náhľad…</span>
+    </div>
+    <div>${badge(f.ftype)} <span style="color:var(--muted);font-size:13px">${esc(t.label)}</span><span class="pv-pages" id="pvPages"></span></div>
     <div>
       <div class="d-name">${esc(f.name)}</div>
       <div class="d-path">${esc(f.path)}</div>
@@ -366,8 +369,34 @@ function renderDetail() {
       ${state.scope === 'all' ? '<button type="button" class="btn" id="btnGoto" style="flex-basis:100%">Prejsť na zákazku</button>' : ''}
     </div>`;
   $('btnOpen').onclick = () => openFile(f.id);
+  $('preview').ondblclick = () => openFile(f.id);
   $('btnFolder').onclick = () => openFolder(f.id);
   if ($('btnGoto')) $('btnGoto').onclick = () => gotoJob(f.job_id, f.folder);
+  loadThumb(f.id);
+}
+
+// Náhľad – s krátkym oneskorením, aby pri listovaní šípkami nevznikali zbytočné požiadavky
+let thumbSeq = 0;
+let thumbTimer;
+function loadThumb(id) {
+  const seq = ++thumbSeq;
+  clearTimeout(thumbTimer);
+  thumbTimer = setTimeout(async () => {
+    const r = await api.get_thumb(id);
+    const box = $('preview');
+    if (seq !== thumbSeq || !box) return;
+    if (!r.ok) {
+      box.innerHTML = `<span class="pv-msg">${esc(r.error)}</span>`;
+      return;
+    }
+    if (r.kind === 'text') {
+      box.classList.add('pv-textbox');
+      box.innerHTML = `<pre class="pv-text">${esc(r.text)}${r.more ? '\n…' : ''}</pre>`;
+      return;
+    }
+    box.innerHTML = `<img src="${r.src}" alt="Náhľad" class="pv-${r.kind}">`;
+    if (r.pages > 1) $('pvPages').textContent = ` · ${r.pages} strán`;
+  }, 120);
 }
 
 async function openFile(id) {
@@ -466,6 +495,60 @@ function bind() {
   });
 }
 
+// --- ťahateľné panely (šírka sa pamätá v localStorage) ---------------------
+const PANES = {
+  tree: { sel: '.tree-pane', min: 180, max: 600 },
+  detail: { sel: '.detail-pane', min: 280, max: 1100 },
+};
+
+function setPaneWidth(name, w) {
+  const p = PANES[name];
+  w = Math.max(p.min, Math.min(p.max, Math.round(w)));
+  document.querySelector(p.sel).style.width = `${w}px`;
+  return w;
+}
+
+function bindResizers() {
+  for (const name of Object.keys(PANES)) {
+    try {
+      const saved = Number(localStorage.getItem(`lupa.width.${name}`));
+      if (saved) setPaneWidth(name, saved);
+    } catch (e) { /* localStorage nedostupný – nevadí */ }
+  }
+  for (const r of document.querySelectorAll('.resizer')) {
+    const name = r.dataset.pane;
+    r.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      r.setPointerCapture(e.pointerId);
+      r.classList.add('drag');
+      document.body.classList.add('resizing');
+      const pane = document.querySelector(PANES[name].sel);
+      const startX = e.clientX;
+      const startW = pane.getBoundingClientRect().width;
+      let w = startW;
+      const move = (ev) => {
+        const dx = ev.clientX - startX;
+        w = setPaneWidth(name, name === 'tree' ? startW + dx : startW - dx);
+      };
+      const up = () => {
+        r.removeEventListener('pointermove', move);
+        r.removeEventListener('pointerup', up);
+        r.classList.remove('drag');
+        document.body.classList.remove('resizing');
+        try { localStorage.setItem(`lupa.width.${name}`, String(w)); } catch (e2) { /* nevadí */ }
+      };
+      r.addEventListener('pointermove', move);
+      r.addEventListener('pointerup', up);
+    });
+    // dvojklik = pôvodná šírka
+    r.addEventListener('dblclick', () => {
+      const def = name === 'tree' ? 270 : 360;
+      setPaneWidth(name, def);
+      try { localStorage.removeItem(`lupa.width.${name}`); } catch (e) { /* nevadí */ }
+    });
+  }
+}
+
 function clearSearch() {
   $('q').value = '';
   $('qClear').hidden = true;
@@ -504,4 +587,5 @@ async function init() {
 }
 
 bind();
+bindResizers();
 window.addEventListener('pywebviewready', init);

@@ -180,6 +180,20 @@ mark { background: #fef08a; color: inherit; border-radius: 2px; }
   overflow: auto;
 }
 
+/* ťahateľný okraj medzi panelmi */
+.resizer {
+  width: 6px;
+  margin: 0 -3px;
+  flex: none;
+  cursor: col-resize;
+  position: relative;
+  z-index: 2;
+}
+.resizer:hover, .resizer.drag { background: #93c5fd; }
+body.resizing { cursor: col-resize; }
+body.resizing iframe, body.resizing .layout { pointer-events: none; }
+body.resizing .resizer.drag { pointer-events: auto; }
+
 /* --- strom --- */
 .tree { display: flex; flex-direction: column; gap: 1px; }
 .node {
@@ -291,6 +305,45 @@ td.c-date, td.c-size { color: var(--muted-2); font-variant-numeric: tabular-nums
 /* --- detail --- */
 .detail { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
 .detail-empty { color: var(--muted); text-align: center; padding-top: 40px; line-height: 1.6; }
+.preview {
+  height: 260px;
+  width: 100%;
+  padding: 8px;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex: none;
+}
+.preview:hover { border-color: #93c5fd; }
+.preview.pv-textbox {
+  height: 420px;
+  padding: 0;
+  align-items: stretch;
+  justify-content: stretch;
+  background: #0f172a;
+  border-color: #0f172a;
+}
+.pv-text {
+  margin: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: #e2e8f0;
+  white-space: pre;
+  user-select: text;
+}
+.preview img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.preview img.pv-pdf { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
+.preview img.pv-icon { max-width: 96px; max-height: 96px; }
+.pv-msg { color: var(--muted); font-size: 13px; }
+.pv-pages { color: var(--muted); font-size: 13px; }
 .d-name { font-family: var(--mono); font-size: 14px; font-weight: 500; word-break: break-all; user-select: text; }
 .d-path { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 6px; word-break: break-all; user-select: text; }
 .d-meta { margin: 0; display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 8px 12px; }

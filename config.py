@@ -3,6 +3,7 @@
 Hodnoty ciest sa čítajú z lupa.ini (vedľa programu), inak platia predvolené.
 """
 import configparser
+import os
 import sys
 from pathlib import Path
 
@@ -36,6 +37,9 @@ def _resolve(p: str) -> Path:
     path = Path(p)
     return path if path.is_absolute() else (APP_DIR / path)
 
+
+# Cache náhľadov – lokálne u používateľa, nie na sieti
+THUMBS_DIR = Path(os.environ.get("LOCALAPPDATA", str(APP_DIR))) / "Lupa" / "thumbs"
 
 ROOT = _resolve(_ini["root"])
 DB_PATH = _resolve(_ini["db"])

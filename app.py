@@ -2,6 +2,7 @@
 
 Databázu otvára len na čítanie. Na disku so zákazkami nič nemení.
 """
+import base64
 import os
 import subprocess
 import sys
@@ -12,6 +13,7 @@ import webview
 
 import config
 import db
+import thumbs
 
 if getattr(sys, "frozen", False):
     UI_DIR = Path(getattr(sys, "_MEIPASS", config.APP_DIR)) / "ui"
@@ -149,6 +151,20 @@ class Api:
         rows = self._q("SELECT path FROM files WHERE id = ?", (file_id,))
         return rows[0]["path"] if rows else None
 
+    def get_thumb(self, file_id: int) -> dict:
+        """Náhľad súboru ako data URI (PNG) – z cache alebo novo vygenerovaný."""
+        rows = self._q("SELECT path, ftype, ext FROM files WHERE id = ?", (file_id,))
+        if not rows:
+            return {"ok": False, "error": "Súbor nie je v databáze."}
+        f = rows[0]
+        if f["ftype"] == "NC" or f["ext"] in thumbs.TEXT_EXTS:
+            return thumbs.get_text(f["path"])
+        r = thumbs.get_thumb(f["path"], f["ftype"])
+        if r["ok"]:
+            data = Path(r.pop("file")).read_bytes()
+            r["src"] = "data:image/png;base64," + base64.b64encode(data).decode("ascii")
+        return r
+
     def open_file(self, file_id: int) -> dict:
         path = self._known_file(file_id)
         if not path:
@@ -192,7 +208,12 @@ def main():
         min_size=(900, 560),
         background_color="#eef1f5",
     )
-    webview.start(debug="--debug" in sys.argv)
+    # private_mode=False, aby sa pamätali nastavenia UI (šírky panelov) medzi spusteniami
+    webview.start(
+        debug="--debug" in sys.argv,
+        private_mode=False,
+        storage_path=str(config.THUMBS_DIR.parent / "webview"),
+    )
 
 
 if __name__ == "__main__":
