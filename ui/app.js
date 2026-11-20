@@ -368,7 +368,7 @@ function renderFiles() {
 function renderEmpty(files) {
   let empty = '';
   if (!files.length) {
-    if (state.scope === 'job' && !state.sel) empty = 'Vľavo vyber zákazku alebo prepni na „Celé L:\\“.';
+    if (state.scope === 'job' && !state.sel) empty = `Vľavo vyber zákazku alebo prepni na „${$('scopeAll').textContent}“.`;
     else if (state.typesOn.size === 0) empty = 'Nie je zapnutý žiadny typ súboru.';
     else if (state.q || state.owner || selectedTypes()) empty = 'Nič sa nenašlo. Skús zmeniť hľadanie alebo filtre.';
     else empty = 'V tomto priečinku nie sú žiadne súbory.';

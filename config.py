@@ -38,12 +38,14 @@ def _resolve(p: str) -> Path:
     return path if path.is_absolute() else (APP_DIR / path)
 
 
-# Cache náhľadov – lokálne u používateľa, nie na sieti
-THUMBS_DIR = Path(os.environ.get("LOCALAPPDATA", str(APP_DIR))) / "Lupa" / "thumbs"
+# Lokálne dáta používateľa (nie na sieti): cache náhľadov, poloha okien, pracovná kópia DB skenera
+LOCAL_DIR = Path(os.environ.get("LOCALAPPDATA", str(APP_DIR))) / "Lupa"
+THUMBS_DIR = LOCAL_DIR / "thumbs"
 
 ROOT = _resolve(_ini["root"])
 DB_PATH = _resolve(_ini["db"])
 RECENT_DAYS = int(_ini["recent_days"])
+FULL_EVERY_DAYS = 7  # scanner --auto: úplný sken, ak posledný bol pred viac ako N dňami
 
 # ---------------------------------------------------------------------------
 # Typy súborov: kľúč -> (popis, prípony, farba pozadia, farba textu)

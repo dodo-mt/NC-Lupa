@@ -1,0 +1,40 @@
+LUPA – prehliadač zákaziek na L:\
+==================================
+
+Spustenie
+---------
+Dvojklik na  L:\_Lupa\Lupa.exe   (nič sa neinštaluje, nepotrebuje admin práva)
+Prvé spustenie trvá pár sekúnd – program sa rozbaľuje.
+Tip: pravým klikom na Lupa.exe -> Odoslať -> Pracovná plocha (vytvoriť odkaz).
+
+Lupa na L:\ nič nemení ani nemaže – len číta.
+
+Ovládanie
+---------
+- Vľavo strom zákazník -> zákazka -> priečinky. Pri zákazke stav úplnosti
+  (Model, PDF, CAM, NC, Listy).
+- Hľadanie (Ctrl+F): časť názvu, viac slov = všetky musia sedieť.
+  Hviezdička * a otáznik ? = vzor na celý názov, napr.  cnc_vyk*.pdf
+- Filtre: vlastník (kto súbor vytvoril), typ (farebné chipy, Ctrl+klik = len jeden),
+  rozsah Aktuálna zákazka / Celé L:\.
+- Zoznam / Galéria – galéria ukazuje veľké náhľady.
+- Dvojklik = otvoriť súbor, tlačidlo „Otvoriť priečinok“ ho ukáže v Prieskumníkovi.
+- Šírky panelov a stĺpcov sa dajú ťahať, poloha okna sa pamätá.
+
+Údaje
+-----
+Databáza:      L:\_Lupa\lupa.db   (aktualizuje sa automaticky, pozri nižšie)
+Lokálne dáta:  %LOCALAPPDATA%\Lupa   (náhľady, poloha okna – dá sa kedykoľvek zmazať)
+
+Pre správcu (sken)
+------------------
+lupa-sken.exe prejde L:\ a zapíše databázu L:\_Lupa\lupa.db.
+  lupa-sken.exe --auto     bežný sken (len zmeny), raz za 7 dní úplný
+  lupa-sken.exe --full     úplný sken
+Sken pracuje s lokálnou kópiou a databázu na L:\ vymení naraz, až keď je hotový.
+Log: L:\_Lupa\lupa_scan.log
+
+Automatický sken: spusti raz  naplanuj_sken.bat  (Plánovač úloh – pri prihlásení
+a potom každú hodinu). Zrušenie:  naplanuj_sken.bat zrus
+
+Nastavenia: lupa.ini vedľa exe (vzor lupa.ini.example) – cesta ku koreňu a k databáze.

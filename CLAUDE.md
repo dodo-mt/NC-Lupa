@@ -57,13 +57,22 @@ Mapovanie drž na jednom mieste (`config.py`), aby sa dalo ľahko rozšíriť.
     znova sa skenujú len zákazky nové, so zmeneným `mtime` alebo so zmenou za posledných N dní (`jobs.last_change`, `recent_days` v `lupa.ini`).
     Zákazka sa skenuje vždy celá (zmaž + vlož nanovo). Prepínač `--full` pre úplný sken (raz týždenne).
   - Databáza **bez WAL** (bude na sieťovom disku). Log skenera: `lupa_scan.log` vedľa DB.
+  - **Pracovná kópia**: skener skenuje do `%LOCALAPPDATA%\Lupa\scan\lupa-<hash>.db` a cieľovú DB nahradí
+    naraz (`os.replace`, opakuje pri obsadení) – len keď sa niečo zmenilo (značka `.pending`).
+    Pri nezmenenej zákazke sa nič neprepisuje a vlastník sa preberá z DB (GetFileSecurity cez sieť je pomalé).
+  - `--auto` = inkrementálny, raz za 7 dní úplný (pre Plánovač úloh). Zámok – súbežne beží len jeden sken.
+- Aplikácia otvára DB **len na dobu dotazu** (nedrží súbor), aby ho skener mohol vymeniť.
   - Spúšťanie z príkazového riadka (neskôr cez Plánovač úloh): `python scanner.py --root L:\ --db <cesta> [--full] [--only "Zákazník"]`.
 - **Aplikácia** (`app.py`): **pywebview** okno s HTML/CSS/JS rozhraním (nie prehliadač, nie server).
   - Python strana vystavuje API cez `js_api` (hľadanie, filtre, strom, otvorenie súboru).
   - Dvojklik na súbor → `os.startfile(cesta)` (otvorí v hyperMILL, Creo, PDF prehliadači…).
   - Databázu otvára **len na čítanie** (`file:...?mode=ro`, `uri=True`).
 - **UI** (`ui/index.html`, `ui/style.css`, `ui/app.js`): čisté HTML/CSS/JS, bez frameworkov a buildov.
-- Neskôr balenie do jedného exe cez **PyInstaller**, umiestnené na `L:\_Lupa\` pre kolegov.
+- **Balenie**: `python build.py` → `dist\Lupa\` (`Lupa.exe`, `lupa-sken.exe` – oba onefile bez konzoly,
+  + súbory z `deploy\`: `naplanuj_sken.bat/.ps1`, `CITAJMA.txt`, `lupa.ini.example`). Celý priečinok sa
+  skopíruje na `L:\_Lupa\`. Predvolene root = `L:\`, DB = `lupa.db` vedľa exe.
+- **Automatický sken**: `naplanuj_sken.bat` (Plánovač úloh, bez admin práv) – pri prihlásení (+2 min)
+  a potom každú hodinu 12 h, `lupa-sken.exe --auto`. Beží na PC používateľa.
 
 ### Pravidlá
 

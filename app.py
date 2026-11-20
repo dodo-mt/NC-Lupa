@@ -6,7 +6,6 @@ import base64
 import os
 import subprocess
 import sys
-import threading
 from pathlib import Path
 
 import webview
@@ -48,14 +47,17 @@ class Api:
 
     def __init__(self, db_path: Path):
         self._db_path = db_path
-        self._lock = threading.Lock()
-        self._con = db.open_ro(db_path) if db_path.exists() else None
 
     def _q(self, sql: str, args=()) -> list[dict]:
-        if self._con is None:
+        # Spojenie len na dobu dotazu – Lupa nedrží súbor DB otvorený, aby ho skener
+        # mohol na zdieľanom disku vymeniť za novú verziu.
+        if not self._db_path.exists():
             return []
-        with self._lock:
-            return [dict(r) for r in self._con.execute(sql, args)]
+        con = db.open_ro(self._db_path)
+        try:
+            return [dict(r) for r in con.execute(sql, args)]
+        finally:
+            con.close()
 
     # --- údaje pre UI ------------------------------------------------------
     def get_meta(self) -> dict:
@@ -70,7 +72,7 @@ class Api:
             "completeness": [n for n, _t, _e in config.COMPLETENESS],
             "root": str(config.ROOT),
             "db": str(self._db_path),
-            "db_ok": self._con is not None,
+            "db_ok": self._db_path.exists(),
             "types": types,
             "last_scan": last[0] if last else None,
         }
@@ -236,7 +238,7 @@ def main():
     webview.start(
         debug="--debug" in sys.argv,
         private_mode=False,
-        storage_path=str(config.THUMBS_DIR.parent / "webview"),
+        storage_path=str(config.LOCAL_DIR / "webview"),
     )
 
 

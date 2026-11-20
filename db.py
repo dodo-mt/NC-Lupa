@@ -76,6 +76,6 @@ def open_rw(path: Path) -> sqlite3.Connection:
 
 def open_ro(path: Path) -> sqlite3.Connection:
     """Otvorí databázu len na čítanie – pre aplikáciu."""
-    con = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True, check_same_thread=False)
+    con = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
     con.row_factory = sqlite3.Row
     return con

@@ -15,7 +15,7 @@ import config
 
 log = logging.getLogger("lupa.winstate")
 
-STATE_FILE = config.THUMBS_DIR.parent / "window.json"
+STATE_FILE = config.LOCAL_DIR / "window.json"
 
 SW_HIDE = 0
 SW_SHOWMINIMIZED = 2

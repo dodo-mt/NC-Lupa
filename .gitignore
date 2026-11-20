@@ -8,3 +8,4 @@ dist/
 build/
 vzorky/
 *.log
+*.spec

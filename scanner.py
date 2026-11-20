@@ -7,8 +7,11 @@ Použitie:
 """
 import argparse
 import fnmatch
+import hashlib
 import logging
+import msvcrt
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -117,6 +120,8 @@ class Scanner:
         self.errors = 0
         self.jobs_scanned = 0
         self.jobs_skipped = 0
+        self.jobs_changed = 0
+        self.changed = False  # zmenil sa obsah DB (zákazky/súbory)? – rozhoduje o publikovaní
 
     def _error(self, msg: str, *args):
         self.errors += 1
@@ -158,6 +163,7 @@ class Scanner:
                     "INSERT INTO customers(name, path, dir_mtime) VALUES (?,?,?)",
                     (entry.name, path, mtime),
                 ).lastrowid
+                self.changed = True
             else:
                 self.con.execute("UPDATE customers SET dir_mtime=? WHERE id=?", (mtime, cid))
             self.con.commit()
@@ -170,6 +176,7 @@ class Scanner:
                 if path not in seen:
                     log.info("Zákazník zmizol, mažem z DB: %s", path)
                     self.con.execute("DELETE FROM customers WHERE id=?", (cid,))
+                    self.changed = True
             self.con.commit()
 
         finished = time.time()
@@ -179,8 +186,9 @@ class Scanner:
         )
         self.con.commit()
         log.info(
-            "Hotovo za %.1f s: zákazky preskenované %d, preskočené %d, súbory %d, chyby %d",
-            finished - started, self.jobs_scanned, self.jobs_skipped, self.files_seen, self.errors,
+            "Hotovo za %.1f s: zákazky preskenované %d (zmenené %d), preskočené %d, súbory %d, chyby %d",
+            finished - started, self.jobs_scanned, self.jobs_changed, self.jobs_skipped,
+            self.files_seen, self.errors,
         )
 
     # --- zákazky -----------------------------------------------------------
@@ -225,23 +233,21 @@ class Scanner:
             if path not in seen:
                 log.info("Zákazka zmizla, mažem z DB: %s", path)
                 self.con.execute("DELETE FROM jobs WHERE id=?", (jid,))
+                self.changed = True
         self.con.commit()
 
     def scan_job(self, jid: int, cid: int, job_name: str, long_path: str, job_mtime):
-        """Celú zákazku zmaže z DB a načíta nanovo."""
-        log.info("Zákazka %s", to_short(long_path))
-        self.con.execute("DELETE FROM files WHERE job_id=?", (jid,))
-        self.con.execute("DELETE FROM positions WHERE job_id=?", (jid,))
+        """Prejde zákazku; ak sa obsah líši od DB, zákazku v DB zmaže a zapíše nanovo.
 
+        Vlastník sa pri nezmenených súboroch preberá z DB (GetFileSecurity cez sieť je pomalé).
+        """
         last_change = job_mtime or 0
-        rows = []
+        dirs = []    # [(rel, name, path)]
+        found = []   # [(rel, entry, ext)]
         stack = [(long_path, "")]
         while stack:
             dir_long, rel = stack.pop()
-            pid = self.con.execute(
-                "INSERT INTO positions(job_id, name, rel_path, path) VALUES (?,?,?,?)",
-                (jid, rel.rsplit("\\", 1)[-1] if rel else job_name, rel, to_short(dir_long)),
-            ).lastrowid
+            dirs.append((rel, rel.rsplit("\\", 1)[-1] if rel else job_name, to_short(dir_long)))
             subdirs = []
             cands = []
             for entry in self._scandir(dir_long):
@@ -258,45 +264,130 @@ class Scanner:
                 cands.append((entry, ext, ver))
 
             for entry, ext, _ver in drop_old_versions(cands):
-                name = entry.name
                 try:
                     st = entry.stat()
                 except OSError as e:
                     self._error("Nedá sa zistiť stat %s: %s", to_short(entry.path), e)
                     continue
-                created = getattr(st, "st_birthtime", st.st_ctime)
                 last_change = max(last_change, st.st_mtime)
-                rows.append((
-                    pid, jid, cid, name, ext, config.ftype_for_ext(ext), to_short(entry.path),
-                    st.st_size, created, st.st_mtime, self.owners.get(entry.path),
-                ))
+                found.append((rel, entry, ext, st))
             # abecedne, aby pozície mali stabilné poradie id
             stack.extend(sorted(subdirs, reverse=True))
 
-        self.con.executemany(
-            "INSERT INTO files(position_id, job_id, customer_id, name, ext, ftype, path,"
-            " size, created, modified, owner) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            rows,
-        )
+        self.files_seen += len(found)
+        self.jobs_scanned += 1
+
+        # porovnanie s DB: priečinky + (priečinok, názov, veľkosť, zmenený)
+        old_dirs = {r[0] for r in self.con.execute("SELECT rel_path FROM positions WHERE job_id=?", (jid,))}
+        old_files = {
+            (r[0], r[1], r[2], r[3]): r[4]
+            for r in self.con.execute(
+                "SELECT p.rel_path, f.name, f.size, f.modified, f.owner FROM files f"
+                " JOIN positions p ON p.id = f.position_id WHERE f.job_id=?", (jid,))
+        }
+        new_keys = {(rel, e.name, st.st_size, st.st_mtime) for rel, e, _x, st in found}
+        # --full prepíše vždy (napr. po zmene typov v config.py)
+        unchanged = not self.full and old_dirs == {d[0] for d in dirs} and set(old_files) == new_keys
+
+        if not unchanged:
+            log.info("Zákazka %s", to_short(long_path))
+            self.con.execute("DELETE FROM files WHERE job_id=?", (jid,))
+            self.con.execute("DELETE FROM positions WHERE job_id=?", (jid,))
+            pids = {}
+            for rel, name, path in dirs:
+                pids[rel] = self.con.execute(
+                    "INSERT INTO positions(job_id, name, rel_path, path) VALUES (?,?,?,?)",
+                    (jid, name, rel, path),
+                ).lastrowid
+            rows = []
+            for rel, e, ext, st in found:
+                owner = old_files.get((rel, e.name, st.st_size, st.st_mtime)) or self.owners.get(e.path)
+                rows.append((
+                    pids[rel], jid, cid, e.name, ext, config.ftype_for_ext(ext), to_short(e.path),
+                    st.st_size, getattr(st, "st_birthtime", st.st_ctime), st.st_mtime, owner,
+                ))
+            self.con.executemany(
+                "INSERT INTO files(position_id, job_id, customer_id, name, ext, ftype, path,"
+                " size, created, modified, owner) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                rows,
+            )
+            self.jobs_changed += 1
+            self.changed = True
         self.con.execute(
             "UPDATE jobs SET dir_mtime=?, last_scan=?, last_change=? WHERE id=?",
             (job_mtime, time.time(), last_change, jid),
         )
         self.con.commit()
-        self.files_seen += len(rows)
-        self.jobs_scanned += 1
 
 
-def setup_logging(db_path: Path, verbose: bool):
+def setup_logging(log_path: Path, verbose: bool):
     fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s", "%Y-%m-%d %H:%M:%S")
-    fh = logging.FileHandler(db_path.with_name("lupa_scan.log"), encoding="utf-8")
-    fh.setFormatter(fmt)
-    sh = logging.StreamHandler(sys.stdout)
-    sh.setFormatter(fmt)
     root = logging.getLogger("lupa")
     root.setLevel(logging.DEBUG if verbose else logging.INFO)
-    root.addHandler(fh)
-    root.addHandler(sh)
+    try:
+        fh = logging.FileHandler(log_path, encoding="utf-8")
+        fh.setFormatter(fmt)
+        root.addHandler(fh)
+    except OSError:
+        pass
+    if sys.stdout is not None:  # exe bez konzoly nemá stdout
+        sh = logging.StreamHandler(sys.stdout)
+        sh.setFormatter(fmt)
+        root.addHandler(sh)
+
+
+# ---------------------------------------------------------------------------
+# Pracovná kópia DB a publikovanie
+# ---------------------------------------------------------------------------
+# Skener pracuje s lokálnou kópiou (rýchle, žiadne pomalé zápisy cez sieť) a cieľovú
+# DB (napr. L:\_Lupa\lupa.db) nahradí naraz – čitatelia nikdy nevidia rozpracovaný stav.
+# Lupa drží DB otvorenú len počas dotazu, takže výmena súboru prejde.
+
+def work_path(target: Path) -> Path:
+    tag = hashlib.sha1(str(target).lower().encode("utf-8")).hexdigest()[:10]
+    return config.LOCAL_DIR / "scan" / f"lupa-{tag}.db"
+
+
+def prepare_work(target: Path, work: Path):
+    """Ak je cieľová DB novšia ako pracovná kópia (alebo kópia chýba), stiahne ju."""
+    work.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists() and (not work.exists() or target.stat().st_mtime > work.stat().st_mtime + 1):
+        log.info("Kopírujem DB %s -> %s", target, work)
+        shutil.copy2(target, work)
+
+
+def publish(work: Path, target: Path, attempts: int = 30):
+    """Nahradí cieľovú DB pracovnou kópiou (cez dočasný súbor a os.replace)."""
+    tmp = target.with_name(target.name + ".new")
+    shutil.copy2(work, tmp)
+    for i in range(attempts):
+        try:
+            os.replace(tmp, target)
+            log.info("Publikované: %s", target)
+            return True
+        except PermissionError:
+            time.sleep(2)  # niekto práve číta – skúsiť znova
+    log.error("DB sa nepodarilo nahradiť (obsadená): %s", target)
+    return False
+
+
+def need_full(con) -> bool:
+    """--auto: úplný sken, ak posledný úplný bol pred viac ako FULL_EVERY_DAYS dňami."""
+    row = con.execute("SELECT MAX(finished) FROM scan_log WHERE mode = 'full'").fetchone()
+    return not row[0] or row[0] < time.time() - config.FULL_EVERY_DAYS * 86400
+
+
+class SingleInstance:
+    """Zámok – ak už sken beží (napr. hodinový + pri prihlásení), druhý sa nespustí."""
+
+    def __init__(self, path: Path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.f = open(path, "a+b")
+        try:
+            msvcrt.locking(self.f.fileno(), msvcrt.LK_NBLCK, 1)
+            self.ok = True
+        except OSError:
+            self.ok = False
 
 
 def main(argv=None):
@@ -304,26 +395,47 @@ def main(argv=None):
     ap.add_argument("--root", default=str(config.ROOT), help="koreň so zákazkami (predvolene z lupa.ini)")
     ap.add_argument("--db", default=str(config.DB_PATH), help="cesta k databáze")
     ap.add_argument("--full", action="store_true", help="úplný sken všetkých zákaziek")
+    ap.add_argument("--auto", action="store_true",
+                    help=f"inkrementálny, raz za {config.FULL_EVERY_DAYS} dní úplný (pre Plánovač úloh)")
     ap.add_argument("--only", help="skenovať len jedného zákazníka (názov priečinka)")
     ap.add_argument("--recent-days", type=int, default=config.RECENT_DAYS,
                     help="inkrementálne: znova prejsť zákazky so zmenou za posledných N dní")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
 
-    if hasattr(sys.stdout, "reconfigure"):
+    if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-    db_path = Path(args.db).resolve()
-    con = db.open_rw(db_path)
-    setup_logging(db_path, args.verbose)
+    target = Path(args.db).resolve()
+    setup_logging(target.with_name("lupa_scan.log"), args.verbose)
+
+    lock = SingleInstance(config.LOCAL_DIR / "scan" / "scan.lock")
+    if not lock.ok:
+        log.info("Sken už beží – končím.")
+        return 0
     if win32security is None:
         log.warning("pywin32 nie je nainštalovaný – vlastník súborov bude '?'")
     if not os.path.isdir(args.root):
         log.error("Koreň neexistuje: %s", args.root)
         return 2
 
-    Scanner(con, args.root, args.full, args.only, args.recent_days).run()
+    work = work_path(target)
+    prepare_work(target, work)
+    con = db.open_rw(work)
+    full = args.full or (args.auto and not args.only and need_full(con))
+    sc = Scanner(con, args.root, full, args.only, args.recent_days)
+    sc.run()
     con.close()
+
+    # značka „čaká na publikovanie“ – ak publikovanie zlyhá, skúsi sa pri ďalšom skene
+    pending = work.with_suffix(".pending")
+    if sc.changed:
+        pending.touch()
+    if pending.exists() or not target.exists():
+        if publish(work, target):
+            pending.unlink(missing_ok=True)
+    else:
+        log.info("Bez zmien – DB sa nepublikuje.")
     return 0
 
 
