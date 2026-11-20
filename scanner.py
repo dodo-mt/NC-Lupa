@@ -371,10 +371,12 @@ class Scanner:
 # ---------------------------------------------------------------------------
 # Odtlačky výkresov (PDF) pre „Podobné výkresy“
 # ---------------------------------------------------------------------------
-def update_prints(con, minutes: float, customer: str | None = None, progress=None) -> dict:
+def update_prints(con, minutes: float, customer: str | None = None, progress=None, on_change=None) -> dict:
     """Dopočíta chýbajúce / zastarané odtlačky PDF (najnovšie prvé), najviac `minutes` minút.
 
     Zmazaným PDF odtlačky odstráni. Vracia {'added', 'failed', 'removed', 'left'}.
+    on_change(): zavolá sa pred prvým zápisom – značka „DB treba publikovať“ musí existovať skôr,
+    ako sa sken môže prerušiť (ukončenie ikony, vypnutie PC).
     """
     res = {"added": 0, "failed": 0, "removed": 0, "left": 0}
     if minutes <= 0:
@@ -388,6 +390,8 @@ def update_prints(con, minutes: float, customer: str | None = None, progress=Non
     if not customer:
         res["removed"] = con.execute(
             "DELETE FROM prints WHERE path NOT IN (SELECT path FROM files WHERE ftype='PDF')").rowcount
+        if res["removed"] and on_change:
+            on_change()
         con.commit()
 
     sql = ("SELECT f.path, f.size, f.modified FROM files f LEFT JOIN prints p ON p.path = f.path"
@@ -402,6 +406,8 @@ def update_prints(con, minutes: float, customer: str | None = None, progress=Non
         return res
 
     log.info("Odtlačky výkresov: na spracovanie %d PDF (limit %g min)", len(todo), minutes)
+    if on_change:
+        on_change()
     deadline = time.time() + minutes * 60
     max_bytes = config.PRINTS_MAX_MB * 1024 * 1024
     processed = 0
@@ -554,6 +560,7 @@ def run_scan(root: str, db_path: Path, full=False, auto=False, only=None,
             return res
 
         work = work_path(db_path)
+        pending = work.with_suffix(".pending")
         prepare_work(db_path, work)
         con = db.open_rw(work)
         try:
@@ -565,8 +572,12 @@ def run_scan(root: str, db_path: Path, full=False, auto=False, only=None,
                 prints_minutes = st["prints_minutes"]
             sc = Scanner(con, root, full, only, recent_days, progress, st["customers"], st["exclude"])
             sc.run()
+            # značka „čaká na publikovanie“ hneď – ak sa sken preruší počas odtlačkov,
+            # zmeny súborov sa zverejnia pri ďalšom skene (pracovná kópia sa zachová)
+            if sc.changed:
+                pending.touch()
             try:
-                pr = update_prints(con, prints_minutes, only, progress)
+                pr = update_prints(con, prints_minutes, only, progress, on_change=pending.touch)
                 res["prints"] = pr
                 if pr["added"] or pr["failed"] or pr["removed"]:
                     sc.changed = True
@@ -579,7 +590,6 @@ def run_scan(root: str, db_path: Path, full=False, auto=False, only=None,
                    files=sc.files_seen, errors=sc.errors, new_jobs=sc.new_jobs)
 
         # značka „čaká na publikovanie“ – ak publikovanie zlyhá, skúsi sa pri ďalšom skene
-        pending = work.with_suffix(".pending")
         if sc.changed:
             pending.touch()
         if pending.exists() or not db_path.exists():
