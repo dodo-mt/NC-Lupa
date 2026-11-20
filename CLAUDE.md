@@ -142,6 +142,8 @@ neskôr možno (napr. „otvoriť v NC editore“).
 
 - Pred väčšou zmenou krátko popíš plán, potom implementuj.
 - Malé kroky, po každom kroku nech sa dá aplikácia spustiť a vyskúšať.
+- **Verzia** je v `config.VERSION` (zobrazí sa v UI, menu ikony skenu, logu a vo vlastnostiach exe).
+  Pri vydaní novej verzie pre `L:\_Lupa\` ju zvýš a pridaj git tag `vX.Y.Z`.
 - `requirements.txt` udržuj aktuálny (pywebview, pywin32; neskôr PyMuPDF).
 - Konfigurácia (cesta k `L:\`, cesta k DB) v `config.py` / `lupa.ini`, nie natvrdo v kóde.
   Vzor: `lupa.ini.example`; lokálny `lupa.ini` (mimo gitu) ukazuje pri vývoji na `vzorky`.

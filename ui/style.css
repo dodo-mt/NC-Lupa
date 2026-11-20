@@ -40,6 +40,7 @@ button { font-family: inherit; cursor: pointer; }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand-name { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
 .brand-root { font-size: 12px; color: #9ca3af; }
+.brand-ver { font-size: 11px; color: #6b7280; margin-left: -4px; }
 .scan-info { font-size: 12px; color: #9ca3af; white-space: nowrap; }
 .sr-only { position: absolute; left: -9999px; }
 

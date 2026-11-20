@@ -69,6 +69,7 @@ class Api:
         types.append({"key": key, "label": label, "bg": bg, "fg": fg})
         last = self._q("SELECT finished, mode, files_seen, errors FROM scan_log ORDER BY id DESC LIMIT 1")
         return {
+            "version": config.VERSION,
             "completeness": [n for n, _t, _e in config.COMPLETENESS],
             "root": str(config.ROOT),
             "db": str(self._db_path),

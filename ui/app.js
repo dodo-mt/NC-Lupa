@@ -810,6 +810,7 @@ async function init() {
   state.typeKeys = meta.types.map((t) => t.key);
   state.typesOn = new Set(state.typeKeys);
   $('root').textContent = meta.root;
+  $('version').textContent = `v${meta.version}`;
   // na tlačidle krátko (L:\ ostane L:\, dlhá cesta = posledný priečinok), celá cesta v bublinke
   const root = meta.root.replace(/[\\/]+$/, '');
   $('scopeAll').textContent = `Celé ${root.length <= 3 ? meta.root : root.split(/[\\/]/).pop()}`;

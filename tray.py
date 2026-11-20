@@ -159,6 +159,8 @@ class Tray:
         def add(text, cmd=0, flags=win32con.MF_STRING):
             win32gui.AppendMenu(m, flags, cmd, text)
 
+        add(f"Lupa sken v{config.VERSION}", 0, gray)
+        add("", 0, win32con.MF_SEPARATOR)
         if self.scanning:
             add(self.progress_tip or "Skenujem…", 0, gray)
         elif self.last:
@@ -303,7 +305,7 @@ def run(root: str, db_path: Path) -> int:
     if win32api.GetLastError() == winerror.ERROR_ALREADY_EXISTS:
         log.info("Ikona Lupa skenu už beží – končím.")
         return 0
-    log.info("Ikona pri hodinách spustená (koreň %s, DB %s)", root, db_path)
+    log.info("Ikona pri hodinách spustená, v%s (koreň %s, DB %s)", config.VERSION, root, db_path)
     Tray(root, db_path)
     win32gui.PumpMessages()
     log.info("Ikona pri hodinách ukončená.")

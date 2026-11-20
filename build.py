@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pymupdf
 
+import config
+
 ROOT = Path(__file__).resolve().parent
 BUILD = ROOT / "build"
 OUT = ROOT / "dist" / "Lupa"
@@ -54,11 +56,35 @@ def make_icon(path: Path, dot: bool = False):
     path.write_bytes(header + entries + data)
 
 
-def pyinstaller(script: str, name: str, extra: list[str]):
+def version_file(name: str, desc: str) -> Path:
+    """Súbor s verziou pre PyInstaller – zobrazí sa vo Vlastnostiach exe (Podrobnosti)."""
+    nums = [int(x) for x in config.VERSION.split(".")] + [0]
+    t = tuple(nums[:4])
+    path = BUILD / f"version_{name}.txt"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"""VSVersionInfo(
+  ffi=FixedFileInfo(filevers={t}, prodvers={t}, mask=0x3f, flags=0x0, OS=0x40004,
+                    fileType=0x1, subtype=0x0, date=(0, 0)),
+  kids=[
+    StringFileInfo([StringTable('041B04B0', [
+      StringStruct('FileDescription', '{desc}'),
+      StringStruct('FileVersion', '{config.VERSION}'),
+      StringStruct('ProductName', 'Lupa'),
+      StringStruct('ProductVersion', '{config.VERSION}'),
+      StringStruct('OriginalFilename', '{name}.exe'),
+      StringStruct('InternalName', '{name}')])]),
+    VarFileInfo([VarStruct('Translation', [0x041B, 1200])])
+  ]
+)
+""", encoding="utf-8")
+    return path
+
+
+def pyinstaller(script: str, name: str, desc: str, extra: list[str]):
     cmd = [
         sys.executable, "-m", "PyInstaller", script,
         "--name", name, "--onefile", "--noconsole", "--noconfirm", "--clean",
-        "--icon", str(ICON),
+        "--icon", str(ICON), "--version-file", str(version_file(name, desc)),
         "--distpath", str(OUT), "--workpath", str(BUILD / name), "--specpath", str(BUILD),
         "--exclude-module", "tkinter",
         *extra,
@@ -75,8 +101,9 @@ def make_icons():
 def main():
     shutil.rmtree(OUT, ignore_errors=True)  # žiadne zvyšky starých verzií
     make_icons()
-    pyinstaller("app.py", "Lupa", ["--add-data", f"{ROOT / 'ui'};ui"])
-    pyinstaller("scanner.py", "lupa-sken", [
+    print(f"Lupa v{config.VERSION}")
+    pyinstaller("app.py", "Lupa", "Lupa – prehliadač zákaziek", ["--add-data", f"{ROOT / 'ui'};ui"])
+    pyinstaller("scanner.py", "lupa-sken", "Lupa – sken zákaziek", [
         "--add-data", f"{ASSETS};assets",
         "--exclude-module", "pymupdf", "--exclude-module", "webview",
     ])

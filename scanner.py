@@ -150,7 +150,7 @@ class Scanner:
     def run(self):
         started = time.time()
         mode = ("full" if self.full else "incr") + (f" only={self.only}" if self.only else "")
-        log.info("Sken %s, koreň %s", mode, self.root)
+        log.info("Sken %s, koreň %s (Lupa v%s)", mode, self.root, config.VERSION)
 
         known = {row[0]: row[1] for row in self.con.execute("SELECT path, id FROM customers")}
         seen = set()
@@ -492,6 +492,17 @@ def run_scan(root: str, db_path: Path, full=False, auto=False, only=None,
     return res
 
 
+def norm_root(root: str) -> str:
+    """Upraví koreň z príkazového riadka: bez úvodzoviek, 'L:' -> 'L:\\'.
+
+    Pozor na Windows: --root "L:\\" príde ako  L:"  (\\" je escape úvodzovky).
+    """
+    r = root.strip().strip('"').strip()
+    if len(r) == 2 and r[1] == ":":
+        r += "\\"
+    return r
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Lupa – sken zákaziek do SQLite")
     ap.add_argument("--root", default=str(config.ROOT), help="koreň so zákazkami (predvolene z lupa.ini)")
@@ -510,7 +521,8 @@ def main(argv=None):
     if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-    target = Path(args.db).resolve()
+    args.root = norm_root(args.root)
+    target = Path(args.db.strip().strip('"')).resolve()
     setup_logging(target.with_name("lupa_scan.log"), args.verbose)
 
     if args.tray:

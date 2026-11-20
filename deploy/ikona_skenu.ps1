@@ -41,7 +41,9 @@ Copy-Item $Source $exe -Force
 $sh = New-Object -ComObject WScript.Shell
 $s = $sh.CreateShortcut($lnk)
 $s.TargetPath = $exe
-$s.Arguments = "--tray --root `"$Root`" --db `"$Db`""
+# Pozor: "L:\" na príkazovom riadku = L: + doslovná úvodzovka (\" sa berie ako escape)!
+# Preto bez koncového \ – skener si "L:" doplní na "L:\".
+$s.Arguments = "--tray --root `"$($Root.TrimEnd('\'))`" --db `"$Db`""
 $s.WorkingDirectory = $bin
 $s.IconLocation = "$exe,0"
 $s.Description = 'Lupa – sken zákaziek (ikona pri hodinách)'
