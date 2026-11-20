@@ -34,7 +34,13 @@ lupa-sken.exe prejde L:\ a zapíše databázu L:\_Lupa\lupa.db.
 Sken pracuje s lokálnou kópiou a databázu na L:\ vymení naraz, až keď je hotový.
 Log: L:\_Lupa\lupa_scan.log
 
-Automatický sken: spusti raz  naplanuj_sken.bat  (Plánovač úloh – pri prihlásení
-a potom každú hodinu). Zrušenie:  naplanuj_sken.bat zrus
+Automatický sken – ikona pri hodinách: spusti raz  ikona_skenu.bat
+  - skopíruje lupa-sken.exe do %LOCALAPPDATA%\Lupa\bin a pridá ho do Po spustení
+  - ikona skenuje každú hodinu (prvý sken 2 min po prihlásení)
+  - pravý klik: Skenovať teraz, Úplný sken, Otvoriť Lupu, Otvoriť log, Ukončiť
+  - dvojklik: otvorí Lupu
+  - upozornenia: L:\ nedostupný, chyby skenu, nové zákazky, výsledok ručného skenu
+  Po novej verzii exe spusti ikona_skenu.bat znova. Zrušenie:  ikona_skenu.bat zrus
+  Lokálny log: %LOCALAPPDATA%\Lupa\lupa_scan.log
 
 Nastavenia: lupa.ini vedľa exe (vzor lupa.ini.example) – cesta ku koreňu a k databáze.

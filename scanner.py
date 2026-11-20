@@ -9,6 +9,7 @@ import argparse
 import fnmatch
 import hashlib
 import logging
+import logging.handlers
 import msvcrt
 import os
 import shutil
@@ -108,32 +109,42 @@ def is_dir(entry: os.DirEntry) -> bool:
         return False
 
 
+class ScanError(Exception):
+    """Sken sa nedá vykonať (napr. koreň nie je dostupný)."""
+
+
 class Scanner:
-    def __init__(self, con, root: str, full: bool, only: str | None, recent_days: int):
+    def __init__(self, con, root: str, full: bool, only: str | None, recent_days: int, progress=None):
         self.con = con
         self.root = os.path.abspath(root)
         self.full = full
         self.only = only
         self.recent_cutoff = time.time() - recent_days * 86400
         self.owners = OwnerResolver()
+        self.progress = progress  # callback(i, n, názov zákazníka) – pre ikonu pri hodinách
         self.files_seen = 0
         self.errors = 0
         self.jobs_scanned = 0
         self.jobs_skipped = 0
         self.jobs_changed = 0
+        self.new_jobs: list[str] = []
         self.changed = False  # zmenil sa obsah DB (zákazky/súbory)? – rozhoduje o publikovaní
 
     def _error(self, msg: str, *args):
         self.errors += 1
         log.warning(msg, *args)
 
-    def _scandir(self, long_path: str) -> list[os.DirEntry]:
+    def _scandir(self, long_path: str) -> list[os.DirEntry] | None:
+        """Obsah priečinka; None pri chybe čítania (≠ prázdny priečinok!).
+
+        Rozlíšenie je dôležité: pri výpadku siete sa nesmú z DB mazať zákazky.
+        """
         try:
             with os.scandir(long_path) as it:
                 return list(it)
         except OSError as e:
             self._error("Nedá sa čítať %s: %s", to_short(long_path), e)
-            return []
+            return None
 
     # --- zákazníci ---------------------------------------------------------
     def run(self):
@@ -145,11 +156,17 @@ class Scanner:
         seen = set()
         found_only = False
 
-        for entry in self._scandir(to_long(self.root)):
-            if not is_dir(entry) or entry.name.lower() in config.IGNORE_ROOT_DIRS:
-                continue
-            if self.only and entry.name.lower() != self.only.lower():
-                continue
+        entries = self._scandir(to_long(self.root))
+        if entries is None:
+            raise ScanError(f"Koreň {self.root} sa nedá čítať.")
+        customers = [
+            e for e in entries
+            if is_dir(e) and e.name.lower() not in config.IGNORE_ROOT_DIRS
+            and (not self.only or e.name.lower() == self.only.lower())
+        ]
+        for i, entry in enumerate(customers, 1):
+            if self.progress:
+                self.progress(i, len(customers), entry.name)
             found_only = True
             path = to_short(entry.path)
             seen.add(path)
@@ -201,7 +218,10 @@ class Scanner:
             )
         }
         seen = set()
-        for entry in self._scandir(long_path):
+        entries = self._scandir(long_path)
+        if entries is None:
+            return  # priečinok zákazníka sa nedá čítať – v DB nič nemeniť
+        for entry in entries:
             if not is_dir(entry) or entry.name.lower() in config.IGNORE_DIRS:
                 continue
             path = to_short(entry.path)
@@ -216,6 +236,7 @@ class Scanner:
                     "INSERT INTO jobs(customer_id, name, path) VALUES (?,?,?)",
                     (cid, entry.name, path),
                 ).lastrowid
+                self.new_jobs.append(entry.name)
                 need = True
             else:
                 jid, old_mtime, last_change = row
@@ -250,7 +271,13 @@ class Scanner:
             dirs.append((rel, rel.rsplit("\\", 1)[-1] if rel else job_name, to_short(dir_long)))
             subdirs = []
             cands = []
-            for entry in self._scandir(dir_long):
+            entries = self._scandir(dir_long)
+            if entries is None:
+                # časť zákazky sa nedá čítať – radšej nechať v DB starý stav
+                log.warning("Zákazka %s sa nedala prečítať celá – ponechávam starý stav.", to_short(long_path))
+                self.con.rollback()
+                return
+            for entry in entries:
                 name = entry.name
                 if is_dir(entry):
                     if name.lower() not in config.IGNORE_DIRS:
@@ -320,16 +347,23 @@ class Scanner:
         self.con.commit()
 
 
-def setup_logging(log_path: Path, verbose: bool):
+LOCAL_LOG = config.LOCAL_DIR / "lupa_scan.log"
+
+
+def setup_logging(shared_log: Path, verbose: bool):
+    """Log lokálne (vždy, aj keď L:\\ nie je dostupný) + vedľa DB (ak sa dá). Rotácia 2 MB × 3."""
     fmt = logging.Formatter("%(asctime)s %(levelname)s %(message)s", "%Y-%m-%d %H:%M:%S")
     root = logging.getLogger("lupa")
     root.setLevel(logging.DEBUG if verbose else logging.INFO)
-    try:
-        fh = logging.FileHandler(log_path, encoding="utf-8")
-        fh.setFormatter(fmt)
-        root.addHandler(fh)
-    except OSError:
-        pass
+    LOCAL_LOG.parent.mkdir(parents=True, exist_ok=True)
+    for path in dict.fromkeys([LOCAL_LOG, shared_log]):
+        try:
+            fh = logging.handlers.RotatingFileHandler(path, maxBytes=2_000_000, backupCount=3,
+                                                      encoding="utf-8", delay=True)
+            fh.setFormatter(fmt)
+            root.addHandler(fh)
+        except OSError:
+            pass
     if sys.stdout is not None:  # exe bez konzoly nemá stdout
         sh = logging.StreamHandler(sys.stdout)
         sh.setFormatter(fmt)
@@ -389,6 +423,74 @@ class SingleInstance:
         except OSError:
             self.ok = False
 
+    def release(self):
+        try:
+            if self.ok:
+                self.f.seek(0)
+                msvcrt.locking(self.f.fileno(), msvcrt.LK_UNLCK, 1)
+        finally:
+            self.f.close()
+
+
+def run_scan(root: str, db_path: Path, full=False, auto=False, only=None,
+             recent_days=config.RECENT_DAYS, progress=None) -> dict:
+    """Jeden sken vrátane publikovania. Vracia súhrn pre CLI aj ikonu pri hodinách.
+
+    status: 'ok' | 'busy' (už beží iný sken) | 'no_root' (koreň nedostupný) | 'error'
+    """
+    res = {"status": "ok", "full": False, "jobs": 0, "changed": 0, "files": 0, "errors": 0,
+           "new_jobs": [], "published": None, "seconds": 0.0, "message": ""}
+    lock = SingleInstance(config.LOCAL_DIR / "scan" / "scan.lock")
+    if not lock.ok:
+        log.info("Sken už beží – končím.")
+        res["status"] = "busy"
+        return res
+    t0 = time.time()
+    try:
+        if win32security is None:
+            log.warning("pywin32 nie je nainštalovaný – vlastník súborov bude '?'")
+        if not os.path.isdir(root):
+            log.error("Koreň neexistuje / nie je dostupný: %s", root)
+            res.update(status="no_root", message=f"{root} nie je dostupný.")
+            return res
+
+        work = work_path(db_path)
+        prepare_work(db_path, work)
+        con = db.open_rw(work)
+        try:
+            res["full"] = full = full or (auto and not only and need_full(con))
+            sc = Scanner(con, root, full, only, recent_days, progress)
+            sc.run()
+        finally:
+            con.close()
+        res.update(jobs=sc.jobs_scanned + sc.jobs_skipped, changed=sc.jobs_changed,
+                   files=sc.files_seen, errors=sc.errors, new_jobs=sc.new_jobs)
+
+        # značka „čaká na publikovanie“ – ak publikovanie zlyhá, skúsi sa pri ďalšom skene
+        pending = work.with_suffix(".pending")
+        if sc.changed:
+            pending.touch()
+        if pending.exists() or not db_path.exists():
+            try:
+                res["published"] = publish(work, db_path)
+            except OSError as e:
+                log.error("Publikovanie zlyhalo: %s", e)
+                res["published"] = False
+            if res["published"]:
+                pending.unlink(missing_ok=True)
+        else:
+            log.info("Bez zmien – DB sa nepublikuje.")
+    except ScanError as e:
+        log.error("%s", e)
+        res.update(status="no_root", message=str(e))
+    except Exception as e:  # sken nesmie zhodiť ikonu pri hodinách
+        log.exception("Sken zlyhal")
+        res.update(status="error", message=str(e))
+    finally:
+        lock.release()
+        res["seconds"] = time.time() - t0
+    return res
+
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Lupa – sken zákaziek do SQLite")
@@ -400,6 +502,8 @@ def main(argv=None):
     ap.add_argument("--only", help="skenovať len jedného zákazníka (názov priečinka)")
     ap.add_argument("--recent-days", type=int, default=config.RECENT_DAYS,
                     help="inkrementálne: znova prejsť zákazky so zmenou za posledných N dní")
+    ap.add_argument("--tray", action="store_true",
+                    help="ikona pri hodinách: sken každú hodinu, menu, upozornenia")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
 
@@ -409,34 +513,12 @@ def main(argv=None):
     target = Path(args.db).resolve()
     setup_logging(target.with_name("lupa_scan.log"), args.verbose)
 
-    lock = SingleInstance(config.LOCAL_DIR / "scan" / "scan.lock")
-    if not lock.ok:
-        log.info("Sken už beží – končím.")
-        return 0
-    if win32security is None:
-        log.warning("pywin32 nie je nainštalovaný – vlastník súborov bude '?'")
-    if not os.path.isdir(args.root):
-        log.error("Koreň neexistuje: %s", args.root)
-        return 2
+    if args.tray:
+        import tray
+        return tray.run(args.root, target)
 
-    work = work_path(target)
-    prepare_work(target, work)
-    con = db.open_rw(work)
-    full = args.full or (args.auto and not args.only and need_full(con))
-    sc = Scanner(con, args.root, full, args.only, args.recent_days)
-    sc.run()
-    con.close()
-
-    # značka „čaká na publikovanie“ – ak publikovanie zlyhá, skúsi sa pri ďalšom skene
-    pending = work.with_suffix(".pending")
-    if sc.changed:
-        pending.touch()
-    if pending.exists() or not target.exists():
-        if publish(work, target):
-            pending.unlink(missing_ok=True)
-    else:
-        log.info("Bez zmien – DB sa nepublikuje.")
-    return 0
+    res = run_scan(args.root, target, args.full, args.auto, args.only, args.recent_days)
+    return {"ok": 0, "busy": 0, "no_root": 2}.get(res["status"], 1)
 
 
 if __name__ == "__main__":

@@ -13,11 +13,16 @@ import pymupdf
 ROOT = Path(__file__).resolve().parent
 BUILD = ROOT / "build"
 OUT = ROOT / "dist" / "Lupa"
-ICON = BUILD / "lupa.ico"
+ASSETS = ROOT / "assets"
+ICON = ASSETS / "lupa.ico"
+ICON_SCAN = ASSETS / "lupa-scan.ico"
 
 
-def make_icon(path: Path):
-    """Ikona: modrá lupa na tmavom štvorci (farby z UI). ICO s PNG obrázkami."""
+def make_icon(path: Path, dot: bool = False):
+    """Ikona: modrá lupa na tmavom štvorci (farby z UI). ICO s PNG obrázkami.
+
+    dot=True: s oranžovou bodkou – ikona pri hodinách počas skenu.
+    """
     doc = pymupdf.open()
     page = doc.new_page(width=256, height=256)
     shape = page.new_shape()
@@ -28,6 +33,9 @@ def make_icon(path: Path):
     shape.finish(color=blue, width=26, fill=None)
     shape.draw_line((152, 152), (206, 206))
     shape.finish(color=blue, width=34, lineCap=1)
+    if dot:
+        shape.draw_circle((196, 60), 50)
+        shape.finish(fill=(0xF9 / 255, 0x73 / 255, 0x16 / 255), color=(0x11 / 255, 0x18 / 255, 0x27 / 255), width=10)
     shape.commit()
 
     pngs = []
@@ -59,10 +67,19 @@ def pyinstaller(script: str, name: str, extra: list[str]):
     subprocess.run(cmd, check=True, cwd=ROOT)
 
 
-def main():
+def make_icons():
     make_icon(ICON)
+    make_icon(ICON_SCAN, dot=True)
+
+
+def main():
+    shutil.rmtree(OUT, ignore_errors=True)  # žiadne zvyšky starých verzií
+    make_icons()
     pyinstaller("app.py", "Lupa", ["--add-data", f"{ROOT / 'ui'};ui"])
-    pyinstaller("scanner.py", "lupa-sken", ["--exclude-module", "pymupdf", "--exclude-module", "webview"])
+    pyinstaller("scanner.py", "lupa-sken", [
+        "--add-data", f"{ASSETS};assets",
+        "--exclude-module", "pymupdf", "--exclude-module", "webview",
+    ])
     # sprievodné súbory: všetko z deploy\ + vzor nastavení
     for f in (ROOT / "deploy").iterdir():
         shutil.copy2(f, OUT / f.name)

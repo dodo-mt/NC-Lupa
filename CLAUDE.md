@@ -71,8 +71,14 @@ Mapovanie drž na jednom mieste (`config.py`), aby sa dalo ľahko rozšíriť.
 - **Balenie**: `python build.py` → `dist\Lupa\` (`Lupa.exe`, `lupa-sken.exe` – oba onefile bez konzoly,
   + súbory z `deploy\`: `naplanuj_sken.bat/.ps1`, `CITAJMA.txt`, `lupa.ini.example`). Celý priečinok sa
   skopíruje na `L:\_Lupa\`. Predvolene root = `L:\`, DB = `lupa.db` vedľa exe.
-- **Automatický sken**: `naplanuj_sken.bat` (Plánovač úloh, bez admin práv) – pri prihlásení (+2 min)
-  a potom každú hodinu 12 h, `lupa-sken.exe --auto`. Beží na PC používateľa.
+- **Automatický sken = ikona pri hodinách** (`tray.py`, `lupa-sken.exe --tray`): sken každú hodinu
+  (prvý 2 min po štarte), menu (Skenovať teraz, Úplný sken, Otvoriť Lupu, Otvoriť log, Ukončiť),
+  upozornenia Windows (L:\ nedostupný – až pri 2. neúspechu, chyby, nezverejnená DB, nové zákazky,
+  výsledok ručného skenu). Len pywin32 (Shell_NotifyIcon), žiadne ďalšie knižnice.
+  Inštalácia `deploy\ikona_skenu.bat`: kópia exe do `%LOCALAPPDATA%\Lupa\bin` (L:\ pri prihlásení ešte
+  nemusí byť pripojený) + odkaz v Po spustení s `--root`/`--db`. Beží na PC používateľa.
+- Log skenera: vždy lokálne `%LOCALAPPDATA%\Lupa\lupa_scan.log` + vedľa DB (rotácia 2 MB × 3).
+- Skener pri chybe čítania priečinka **nič nemaže** (výpadok siete ≠ prázdny priečinok).
 
 ### Pravidlá
 
