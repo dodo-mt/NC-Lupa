@@ -132,23 +132,28 @@ prints(path, size, modified, version, views)   -- odtlačky PDF, views = odtlack
 - Hľadanie podľa časti názvu: `LIKE '%…%'` (pri raste zvážiť FTS5).
 - Odhad veľkosti: ~150 000 súborov → desiatky MB.
 
-## Stav projektu (aktuálne 1.3.1)
+## Stav projektu (aktuálne 1.3.2)
 
 Hotové: verzia 1 (nižšie) + náhľady, galéria, NC/TXT náhľad, kontrola úplnosti, exe, ikona skenu
 pri hodinách, stavový riadok, kontextové menu stromu, podobné výkresy, filter zákazníkov v `lupa.ini`,
-hľadanie čísla zákazky v strome, typy XLS/DOC zvlášť.
-Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`, `v1.3.0`, `v1.3.1` (pushnuté na GitHub `origin/main`).
+hľadanie čísla zákazky v strome, typy XLS/DOC zvlášť,
+lokálna kópia DB, spúšťač, nové typy, odkazy .lnk, menu zákaziek pod hľadaním (1.3.2).
+Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`, `v1.3.0`, `v1.3.1`, `v1.3.2` (pushnuté na GitHub `origin/main`).
 
 **Ostré nasadenie (20.11.2026)**: DB `L:\_Lupa\lupa.db` na sieťovom disku (~180 MB).
 Prvý úplný sken L:\ (ešte skener 1.0 na inom PC) – ~1 h, 33 600+ zákaziek / 237 zákazníkov, bez chýb.
 Lupa 1.2.0 tam mala prázdne okno (DB na sieti – `db.ro_uri`), opravené v 1.3.0 a overené používateľom.
 
-**Čaká sa na používateľa**: nasadiť 1.3.1 (`dist\Lupa\` → `L:\_Lupa\`), do `L:\_Lupa\lupa.ini`
-`customers = [0-9]*, OD*` + `exclude = .*, AI_RecycleBin`, na PC so skenerom znova `ikona_skenu.bat`
-(beží tam stará 1.0 – nepočíta odtlačky, nepozná filter). Potom overiť: postup odtlačkov (stavový riadok
-„odtlačky X / Y“, rýchlosť cez sieť v `lupa_scan.log`), podobné výkresy na ostrých dátach, vlastníci
-= ozajstné mená kolegov. V koreni L:\ sú aj nezákaznícke priečinky (zálohy strojov, Hypermill,
-dokumentácia…) – používateľ rozhodne, či ich pridá do `customers`.
+**21.11.2026**: v noci prebehol úplný sken L:\ aj so všetkými odtlačkami PDF (DB ~250 MB, 42 000 zákaziek,
+328 zákazníkov, 63 000 odtlačkov). Spúšťač + lokálna kópia DB overené používateľom na L:\ („vyzerá fajn“).
+
+**Vydaná 1.3.2 (21.11.2026)** – tag `v1.3.2`, build v `dist\Lupa\`. Obsahuje: lokálna kópia DB + pásik,
+spúšťač (onedir v `app\`), nové typy (MODEL, OBR, MAIL, ZIP, ECAM, XLS aj xlsm), skryté súbory/priečinky
++ upratanie DB + VACUUM, odkazy .lnk, dvojklik = ukázať v strome, kontextové menu súborov, stĺpce,
+vlastníci, strom šípkami, menu zákaziek pod hľadaním.
+Potom u používateľa: `dist\Lupa\` → `L:\_Lupa\` (celý priečinok, aj `app\`), na PC so skenerom znova
+`ikona_skenu.bat` (nový skener preradí typy, vyhodí skryté súbory, doplní ciele .lnk – bez úplného skenu).
+Overiť: ciele odkazov .lnk na sieťovom L:\ (lokálne netestovateľné), menu zákaziek pri `324` na ostrých dátach.
 
 **Podobné výkresy** (bod 5): odtlačky v skeneri + UI hotové (tlačidlo v detaile PDF, výsledok
 v zozname/galérii so stĺpcom Podobnosť, Esc = späť; `Api.similar`, index v pamäti do zmeny DB).
@@ -160,7 +165,7 @@ tlačidlo „Obnoviť“ v Lupe bez reštartu.
 **Na rade (21.11.2026)**:
 - Pomalý štart (16 s cez sieť – meranie `zmeraj_start.py`: počet odtlačkov 8,3 s, úplnosť 4,7 s) →
   lokálna kópia DB + pásik priebehu (overené, ~5 s – zvyšok bol štart onefile exe) → spúšťač + onedir
-  (test u používateľa: onedir z C: rýchlejší ako onefile). **Čaká na overenie spúšťača na L:\.**
+  (overené na L:\).
 - ✅ Filter vlastníka: počty súborov len vo vybranej zákazke / u zákazníka (`get_owners(params)`).
 - **Odkazy .lnk – fáza 2** (neskôr): pri starej zákazke ukázať „odkazujú sem: zákazky X, Y“.
 
