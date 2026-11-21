@@ -1,5 +1,6 @@
 :root {
-  --tree-w: 270px;   /* šírka stromu – mení ťahanie; podľa nej sa zarovnáva hľadanie a filtre */
+  --tree-w: 270px;   /* šírka stromu – mení ťahanie; podľa nej sa zarovnáva lišta filtrov */
+  --detail-w: 360px; /* šírka pravého panela (detail) – po ňu siaha hľadanie */
   --accent: #1d4ed8;
   --accent-soft: #eff6ff;
   --text: #1f2937;
@@ -44,10 +45,13 @@ button { font-family: inherit; cursor: pointer; }
 .brand-name { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
 .sr-only { position: absolute; left: -9999px; }
 
+/* hľadanie presne nad zoznamom (stredný panel): od začiatku po koniec zoznamu – pri ťahaní
+   stromu (--tree-w) aj detailu (--detail-w) sa naťahuje s ním; 20 px = vnútorný okraj panela,
+   sprava ešte 20 px okraj hornej lišty */
 .search {
   flex: 1;
-  max-width: 720px;
-  margin: 0 16px 0 20px;
+  min-width: 240px;
+  margin: 0 var(--detail-w) 0 20px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -212,6 +216,24 @@ select {
   cursor: pointer;
 }
 .chip-select:hover { border-color: #9ca3af; }
+.views-btn { gap: 6px; }
+.views-btn svg:first-child { color: var(--accent); }
+.views-btn #viewsLabel { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* dialóg (uloženie pohľadu) */
+.dlg-back { position: fixed; inset: 0; z-index: 80; display: flex; align-items: flex-start; justify-content: center;
+  padding-top: 18vh; background: rgba(17, 24, 39, .25); }
+.dlg-back[hidden] { display: none; }
+.dlg { width: 380px; max-width: calc(100vw - 32px); padding: 16px 18px; background: #fff; border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(17, 24, 39, .25); display: flex; flex-direction: column; gap: 8px; }
+.dlg-title { font-size: 15px; font-weight: 600; }
+.dlg-sum { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.dlg-label { font-size: 12px; font-weight: 600; margin-top: 4px; }
+.dlg-hint { font-size: 11px; color: var(--muted); }
+.dlg input { height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+.dlg input:focus { outline: 2px solid #93c5fd; border-color: var(--accent); }
+.dlg-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.dlg-btns .btn { flex: none; min-height: 34px; min-width: 88px; font-size: 13px; cursor: pointer; }
 .chip-select.active { border: 2px solid var(--accent); padding: 0 7px 0 9px; background: var(--accent-soft); color: #1e3a8a; }
 .chip-select .cs-value { color: #111827; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip-select svg { flex: none; color: var(--muted); transition: transform .12s; }
@@ -370,7 +392,7 @@ mark { background: #fef08a; color: inherit; border-radius: 2px; }
   padding: 16px 20px;
 }
 .detail-pane {
-  width: 360px;
+  width: var(--detail-w);
   flex: none;
   background: #fff;
   border-left: 1px solid var(--line);
@@ -485,6 +507,13 @@ body.resizing .resizer.drag, body.resizing .col-grip.drag { pointer-events: auto
 .crumb { font-size: 12px; color: var(--muted); min-height: 16px; }
 .list-head h1 { margin: 4px 0 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
 .count { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.head-right { display: flex; align-items: center; gap: 12px; flex: none; }
+/* prepínač zoznam / galéria – ikonky nad zoznamom (Ctrl+G) */
+.viewsw { display: flex; padding: 2px; gap: 2px; background: var(--line-soft); border-radius: 8px; }
+.viewsw button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 26px;
+  border: 0; border-radius: 6px; background: transparent; color: var(--muted-2); cursor: pointer; }
+.viewsw button:hover:not(.on) { color: #111827; }
+.viewsw button.on { background: #fff; color: var(--accent); box-shadow: 0 1px 2px rgba(0,0,0,.15); }
 
 .table-wrap {
   flex: 1;

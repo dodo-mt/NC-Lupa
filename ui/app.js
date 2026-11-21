@@ -486,10 +486,12 @@ function renderFolderMenu() {
   if (fmenu.more) out.push(`<div class="fm-more">… a ďalších ${fmenu.more} – spresni hľadanie</div>`);
   out.push('<div class="fm-hint">Enter = otvoriť v strome · ↑↓ výber · Esc zavrieť</div>');
   box.innerHTML = out.join('');
+  // pod hľadaním (aspoň 460 px – číslo, zákazník, rok, úplnosť)
   const r = document.querySelector('.search').getBoundingClientRect();
-  box.style.left = `${r.left}px`;
+  const w = Math.min(Math.max(r.width, 460), window.innerWidth - 16);
+  box.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - w - 8))}px`;
   box.style.top = `${r.bottom + 4}px`;
-  box.style.width = `${r.width}px`;
+  box.style.width = `${w}px`;
   box.hidden = false;
   box.querySelector('.fm-item.cur')?.scrollIntoView({ block: 'nearest' });
 }
@@ -713,6 +715,7 @@ async function loadOwners() {
 // --- zoznam súborov --------------------------------------------------------
 async function refresh() {
   loadOwners();
+  renderViewsBtn();
   const seq = ++reqSeq;
   const types = selectedTypes();
   let res;
@@ -1103,7 +1106,7 @@ function renderDetail() {
     <div>${badge(f.ftype)} <span style="color:var(--muted);font-size:13px">${esc(t.label)}</span><span class="pv-pages" id="pvPages"></span></div>
     <div>
       <div class="d-name">${esc(f.name)}</div>
-      <div class="d-path">${esc(f.path)}</div>
+      <div class="d-path" title="${esc(f.path)}">${esc(f.path.slice(0, f.path.lastIndexOf('\\') + 1))}</div>
     </div>
     <dl class="d-meta">
       <dt>Zákazník</dt><dd>${esc(f.customer)}</dd>
@@ -1235,6 +1238,7 @@ function bind() {
 
   // filtre
   bindOwnerDropdown();
+  bindViews();
   $('chips').addEventListener('click', (e) => {
     const b = e.target.closest('.chip');
     if (!b) return;
@@ -1271,7 +1275,7 @@ function bind() {
   }
 
   // galéria
-  for (const b of document.querySelectorAll('.seg.dark button')) {
+  for (const b of document.querySelectorAll('.viewsw button')) {
     b.addEventListener('click', () => setMode(b.dataset.mode));
   }
   $('gallery').addEventListener('click', (e) => {
@@ -1327,6 +1331,12 @@ function bind() {
       reloadData();
       return;
     }
+    // Ctrl+G = prepnúť zoznam ↔ galéria
+    if (e.ctrlKey && (e.key === 'g' || e.key === 'G')) {
+      e.preventDefault();
+      setMode(state.mode === 'gallery' ? 'list' : 'gallery');
+      return;
+    }
     if (e.ctrlKey && (e.key === 'f' || e.key === 'F')) {
       e.preventDefault();
       $('q').focus();
@@ -1361,12 +1371,8 @@ const PANES = {
 function setPaneWidth(name, w) {
   const p = PANES[name];
   w = Math.max(p.min, Math.min(p.max, Math.round(w)));
-  if (name === 'tree') {
-    // šírka stromu je CSS premenná – podľa nej sa zarovnáva aj hľadanie a lišta filtrov
-    document.documentElement.style.setProperty('--tree-w', `${w}px`);
-  } else {
-    document.querySelector(p.sel).style.width = `${w}px`;
-  }
+  // šírky sú CSS premenné – podľa nich sa zarovnáva lišta filtrov a hľadanie (nad zoznamom)
+  document.documentElement.style.setProperty(name === 'tree' ? '--tree-w' : '--detail-w', `${w}px`);
   return w;
 }
 
@@ -1561,9 +1567,186 @@ function pickOwner(owner) {
   closeOwnerDrop();
   if (owner === state.owner) return;
   state.owner = owner;
-  $('ownerValue').textContent = ownerName(owner) || 'Všetci';
-  $('ownerChip').classList.toggle('active', !!owner);
+  renderOwnerChip();
   refresh();
+}
+
+function renderOwnerChip() {
+  $('ownerValue').textContent = ownerName(state.owner) || 'Všetci';
+  $('ownerChip').classList.toggle('active', !!state.owner);
+}
+
+// --- moje filtre: vlastník + typy + hľadanie + rozsah + zoznam/galéria naraz ---------
+// Predvolené „Moje …“ sú len počiatočný stav (kým si nikto nič neuloží) – dajú sa prepísať
+// aj zmazať; „Obnoviť predvolené“ vráti chýbajúce. '@me' = prihlásený používateľ Windows,
+// takže fungujú každému kolegovi bez nastavovania. Filtre sú len v tomto PC (localStorage).
+const VIEWS_KEY = 'lupa.views';
+const DEFAULT_VIEWS = [
+  { name: 'Moje programy', owner: '@me', types: ['HMC', 'ECAM'], q: '', scope: 'all', mode: 'gallery' },
+  { name: 'Moje CNC listy', owner: '@me', types: ['PDF'], q: 'cnc_vyk*.pdf', scope: 'all', mode: 'gallery' },
+];
+let me = { user: '', owner: '' };   // prihlásený používateľ a jeho tvar v DB (api.whoami)
+
+function userViews() {
+  const raw = lsGet(VIEWS_KEY, null);
+  if (raw === null) return DEFAULT_VIEWS.map((v) => ({ ...v }));   // ešte nič neuložené
+  try { return JSON.parse(raw) || []; } catch (e) { return []; }
+}
+
+function saveUserViews(list) {
+  list.sort((a, b) => a.name.localeCompare(b.name, 'sk'));
+  lsSet(VIEWS_KEY, JSON.stringify(list));
+}
+
+function storeView(name, view) {
+  const list = userViews().filter((v) => v.name.toLowerCase() !== name.toLowerCase());
+  list.push({ ...view, name });
+  saveUserViews(list);
+}
+
+// vlastník v DB, ktorý patrí prihlásenému používateľovi ('' = v DB nemá súbory)
+function meOwner() {
+  return me.owner || '';
+}
+
+function viewSummary(v) {
+  const who = v.owner === '@me' ? 'ja' : v.owner ? ownerName(v.owner) : 'všetci';
+  const types = v.types ? v.types.join(' + ') : 'všetky typy';
+  const scope = v.scope === 'all' ? $('scopeAll').textContent : 'aktuálna zákazka';
+  return [who, types, v.q ? `„${v.q}“` : '', scope, v.mode === 'gallery' ? 'galéria' : 'zoznam']
+    .filter(Boolean).join(' · ');
+}
+
+function currentView() {
+  const all = state.typesOn.size === state.typeKeys.length;
+  return {
+    owner: state.owner && state.owner === meOwner() ? '@me' : state.owner,
+    types: all ? null : state.typeKeys.filter((k) => state.typesOn.has(k)),
+    q: state.q, scope: state.scope, mode: state.mode,
+  };
+}
+
+// Aktívny filter = uložený, ktorého vlastník, typy, hľadanie a rozsah sa zhodujú s aktuálnymi
+// (zoznam/galéria sa nepočíta). Ručná zmena filtrov ho teda „vypne“ sama.
+function sameView(a, b) {
+  const t = (v) => (v.types ? [...v.types].sort().join(',') : '*');
+  return (a.owner || '') === (b.owner || '') && t(a) === t(b) && (a.q || '') === (b.q || '')
+    && (a.scope || 'job') === (b.scope || 'job');
+}
+
+function activeView() {
+  if (state.similar) return null;
+  const cur = currentView();
+  return userViews().find((v) => sameView(v, cur)) || null;
+}
+
+function renderViewsBtn() {
+  const v = activeView();
+  $('viewsLabel').textContent = v ? v.name : 'Moje filtre';
+  $('viewsBtn').classList.toggle('active', !!v);
+  $('viewsBtn').title = v ? `Filter „${v.name}“: ${viewSummary(v)} – klik = vypnúť alebo vybrať iný`
+    : 'Moje filtre – vlastník, typy, hľadanie, rozsah a zobrazenie naraz';
+}
+
+let beforeView = null;   // rozsah a zobrazenie pred zapnutím filtra (vráti ich vypnutie)
+
+// Vypnutie filtra: všetci vlastníci, všetky typy, bez hľadania; rozsah a zobrazenie ako predtým
+function clearView() {
+  const back = beforeView || { scope: state.sel ? 'job' : 'all', mode: state.mode };
+  beforeView = null;
+  applyView({ owner: '', types: null, q: '', scope: back.scope, mode: back.mode }, true);
+}
+
+function applyView(v, restoring = false) {
+  if (!restoring && !activeView()) beforeView = { scope: state.scope, mode: state.mode };
+  leaveSimilar();
+  let owner = v.owner || '';
+  if (owner === '@me') {
+    owner = meOwner();
+    if (!owner) toast(`Používateľ ${me.user || '?'} nemá v databáze žiadne súbory – ukazujem všetkých vlastníkov.`);
+  }
+  state.owner = owner;
+  renderOwnerChip();
+  state.typesOn = new Set(v.types ? v.types.filter((k) => state.typeKeys.includes(k)) : state.typeKeys);
+  renderChips();
+  state.q = v.q || '';
+  $('q').value = state.q;
+  $('qClear').hidden = !state.q;
+  closeFolderMenu();
+  state.scope = v.scope === 'job' ? 'job' : 'all';
+  renderScope();
+  renderTree();
+  setMode(v.mode === 'gallery' ? 'gallery' : 'list');
+  refresh();
+}
+
+function openViewsMenu() {
+  const r = $('viewsBtn').getBoundingClientRect();
+  const at = { clientX: r.left, clientY: r.bottom + 4 };
+  const list = userViews();
+  const act = activeView();
+  // klik na aktívny filter = vypnúť ho (zobrazí sa zase všetko)
+  const items = list.map((v) => ({
+    text: v.name, checked: !!act && act.name === v.name,
+    action: () => (act && act.name === v.name ? clearView() : applyView(v)),
+  }));
+  if (items.length) items.push('-');
+  items.push(['Uložiť aktuálny filter…', () => openViewDialog('')]);
+  if (list.length) {
+    items.push(['Prepísať filter aktuálnym…', () => {
+      showMenu(at, [{ title: 'Prepísať aktuálnym nastavením' }, ...list.map((v) => [v.name, () => {
+        storeView(v.name, currentView());
+        renderViewsBtn();
+        toast(`Filter „${v.name}“ prepísaný:\n${viewSummary(currentView())}`);
+      }])]);
+    }]);
+    items.push(['Zmazať filter…', () => {
+      showMenu(at, [{ title: 'Zmazať filter' }, ...list.map((v) => [v.name, () => {
+        saveUserViews(userViews().filter((x) => x.name !== v.name));
+        renderViewsBtn();
+        toast(`Filter „${v.name}“ zmazaný.`);
+      }])]);
+    }]);
+  }
+  const names = new Set(list.map((v) => v.name.toLowerCase()));
+  const missing = DEFAULT_VIEWS.filter((v) => !names.has(v.name.toLowerCase()));
+  if (missing.length) {
+    items.push(['Obnoviť predvolené filtre', () => {
+      saveUserViews([...userViews(), ...missing.map((v) => ({ ...v }))]);
+      toast(`Obnovené: ${missing.map((v) => v.name).join(', ')}`);
+    }]);
+  }
+  showMenu(at, items);
+}
+
+function openViewDialog(name) {
+  $('viewSum').textContent = viewSummary(currentView());
+  $('viewName').value = name || '';
+  $('viewDlg').hidden = false;
+  $('viewName').focus();
+}
+
+function closeViewDialog() {
+  $('viewDlg').hidden = true;
+}
+
+function bindViews() {
+  $('viewsBtn').addEventListener('click', openViewsMenu);
+  $('viewCancel').addEventListener('click', closeViewDialog);
+  $('viewDlg').addEventListener('mousedown', (e) => { if (e.target === $('viewDlg')) closeViewDialog(); });
+  $('viewName').addEventListener('keydown', (e) => {
+    e.stopPropagation();   // šípky / Enter / Esc nepatria zoznamu súborov
+    if (e.key === 'Escape') closeViewDialog();
+  });
+  $('viewForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const name = $('viewName').value.trim();
+    if (!name) { $('viewName').focus(); return; }
+    storeView(name, currentView());   // rovnaký názov = prepísať
+    renderViewsBtn();
+    closeViewDialog();
+    toast(`Filter „${name}“ uložený.`);
+  });
 }
 
 function bindOwnerDropdown() {
@@ -1793,6 +1976,7 @@ async function initApp() {
   }
   loadStep('Načítavam vlastníkov…', at(0.15), at(0.2));
   await loadOwners();
+  try { me = (await api.whoami()) || me; } catch (e) { /* bez „Moje …“ */ }
   loadStep('Načítavam strom zákaziek…', at(0.2), at(0.97));
   state.tree = await api.get_tree();
   if (state.tree.length === 1) state.openCust.add(state.tree[0].id);

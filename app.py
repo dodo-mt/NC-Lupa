@@ -97,6 +97,20 @@ class Api:
         p = self._copy.progress
         return {"done": p[0], "total": p[1]} if p else None
 
+    def whoami(self) -> dict:
+        """Prihlásený používateľ Windows a jeho tvar vo files.owner (pohľady „Moje …“).
+        owner = '' – používateľ v DB žiadne súbory nemá."""
+        import getpass
+        try:
+            user = getpass.getuser()
+        except Exception:
+            user = ""
+        # presná zhoda cez index files(owner); meno z Windows môže mať iné veľké písmená ako v DB
+        for cand in dict.fromkeys([user, user.lower(), user.upper(), user.capitalize()]):
+            if cand and self._q("SELECT 1 FROM files WHERE owner = ? LIMIT 1", (cand,)):
+                return {"user": user, "owner": cand}
+        return {"user": user, "owner": ""}
+
     def check_updates(self) -> dict:
         """Volá UI pravidelne: značka aktuálnej kópie DB (zmena = skener zverejnil novú DB,
         kópia sa medzitým urobila na pozadí) a nová verzia Lupy na L:\\_Lupa (spúšťač)."""

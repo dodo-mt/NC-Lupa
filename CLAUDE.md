@@ -132,7 +132,7 @@ prints(path, size, modified, version, views)   -- odtlačky PDF, views = odtlack
 - Hľadanie podľa časti názvu: `LIKE '%…%'` (pri raste zvážiť FTS5).
 - Odhad veľkosti: ~150 000 súborov → desiatky MB.
 
-## Stav projektu (aktuálne 1.3.6)
+## Stav projektu (aktuálne 1.3.7)
 
 Hotové: verzia 1 (nižšie) + náhľady, galéria, NC/TXT náhľad, kontrola úplnosti, exe, ikona skenu
 pri hodinách, stavový riadok, kontextové menu stromu, podobné výkresy, filter zákazníkov v `lupa.ini`,
@@ -156,6 +156,8 @@ majú vlastné 4 miesta.
 **1.3.4**: menu zákaziek – `OD…` pred starými, novšie skôr, rok zmeny pri zákazke.
 **1.3.5** (len build, bez tagu): tlačidlo Obnoviť (F5), upozornenie na novú verziu Lupy, „Odkazujú sem“.
 **1.3.6**: odkazy .lnk oboma smermi + ikonka v strome, náhľady DXF a DWG (`vykres.py`).
+**1.3.7**: Moje filtre (fajka, vypnutie klikom, predvolené upraviteľné), Zoznam/Galéria nad zoznamom
++ Ctrl+G, hľadanie presne nad zoznamom, v detaile len priečinok.
 Pozor: po kopírovaní na L:\ zavrieť bežiacu Lupu (aj na lište), inak ostane stará.
 Potom u používateľa: `dist\Lupa\` → `L:\_Lupa\` (celý priečinok, aj `app\`), na PC so skenerom znova
 `ikona_skenu.bat` (nový skener preradí typy, vyhodí skryté súbory, doplní ciele .lnk – bez úplného skenu).
@@ -206,10 +208,21 @@ rozmery zo STP by sa hodili k podobným výkresom.
 
 Schválený návrh UI (maketa): https://claude.ai/artifact/MHEAKvNtdfXvU9EaucAA1w
 
-- Tmavá horná lišta (#111827) s názvom „Lupa“, hľadaním a prepínačom Zoznam / Galéria. Verzia v názve okna („Lupa 1.2.0“).
+- Tmavá horná lišta (#111827): vľavo „Lupa“, **hľadanie presne nad zoznamom** (stredný panel –
+  od `--tree-w` po `--detail-w`, naťahuje sa s panelmi; menu zákaziek pod ním, aspoň 460 px). Prepínač Zoznam / Galéria = ikonky nad
+  zoznamom vpravo pri počte súborov (Ctrl+G prepína). Verzia v názve okna („Lupa 1.2.0“).
 - Biela lišta filtrov pod ňou (vlastník ako štítok, chipy typov, všetky/žiadne, rozsah).
-- **Zarovnanie**: hľadanie aj filtre začínajú nad zoznamom súborov – ľavý stĺpec má šírku stromu
-  (CSS premenná `--tree-w`, mení ju ťahanie). Nad stromom: „Zákazníci“ + Rozbaliť/Zbaliť všetko.
+- **Moje filtre** (tlačidlo vľavo v lište filtrov): nastavia naraz vlastníka, typy, hľadanie, rozsah a
+  zoznam/galériu. Predvolené „Moje programy“ (ja · HMC + ECAM · celé L:\ · galéria) a „Moje CNC listy“
+  (ja · PDF · `cnc_vyk*.pdf` · celé L:\ · galéria); „ja“ = prihlásený používateľ Windows
+  (`Api.whoami` → jeho tvar vo `files.owner`). Predvolené sú len počiatočný stav (dajú sa prepísať / zmazať, „Obnoviť predvolené
+  filtre“ vráti chýbajúce). Uložiť aktuálny filter…, Prepísať filter aktuálnym…, Zmazať filter… –
+  len v tomto PC (`lupa.views` v localStorage). Aktívny filter (zhoda vlastníka, typov, hľadania
+  a rozsahu – `sameView`) má v menu fajku a jeho meno je na tlačidle; klik naň ho vypne (všetci,
+  všetky typy, bez hľadania; rozsah a zobrazenie ako pred zapnutím). Hlavný spôsob práce: nájsť svoj podobný kus.
+- Detail súboru: pod názvom len priečinok (celá cesta v bublinke).
+- **Zarovnanie**: filtre začínajú nad zoznamom súborov – ľavý stĺpec má šírku stromu
+  (CSS premenná `--tree-w`, mení ju ťahanie); hľadanie končí nad detailom (`--detail-w`). Nad stromom: „Zákazníci“ + Rozbaliť/Zbaliť všetko.
 - **Stavový riadok** dole (nenápadný): vľavo koreň + počty z DB, vpravo „Posledný sken“
   (oranžovo, ak je starší ako 24 h). Čas skenu z `lupa_scan.json` vedľa DB – skener ho zapisuje
   pri každom skene, aj keď DB nepublikuje.

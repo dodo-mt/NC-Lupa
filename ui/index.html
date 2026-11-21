@@ -7,7 +7,7 @@
 </head>
 <body>
 <header class="topbar">
-  <!-- ľavý stĺpec má šírku stromu (--tree-w), hľadanie začína nad zoznamom súborov -->
+  <!-- ľavý stĺpec má šírku stromu (--tree-w), hľadanie je presne nad zoznamom (po --detail-w) -->
   <div class="brand left-col">
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m20 20-4.8-4.8"></path></svg>
     <span class="brand-name">Lupa</span>
@@ -19,10 +19,6 @@
     <button type="button" class="search-clear" id="qClear" aria-label="Vymazať hľadanie" hidden>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
     </button>
-  </div>
-  <div class="seg dark" role="group" aria-label="Zobrazenie">
-    <button type="button" data-mode="list" id="modeList">Zoznam</button>
-    <button type="button" data-mode="gallery" id="modeGallery">Galéria</button>
   </div>
 </header>
 
@@ -36,6 +32,11 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 20 5-5 5 5"></path><path d="m7 4 5 5 5-5"></path></svg>
     </button>
   </div>
+  <button type="button" class="chip-select views-btn" id="viewsBtn" aria-haspopup="menu" title="Moje filtre – vlastník, typy, hľadanie, rozsah a zobrazenie naraz">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+    <span id="viewsLabel">Moje filtre</span>
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+  </button>
   <button type="button" class="chip-select" id="ownerChip" aria-haspopup="listbox" aria-expanded="false" title="Vlastník súboru (kto ho vytvoril)">
     <span>Vlastník:</span>
     <span class="cs-value" id="ownerValue">Všetci</span>
@@ -70,7 +71,13 @@
         </div>
         <div class="links" id="links" hidden></div>
       </div>
-      <span class="count" id="count"></span>
+      <div class="head-right">
+        <span class="count" id="count"></span>
+        <div class="viewsw" role="group" aria-label="Zobrazenie">
+          <button type="button" data-mode="list" id="modeList" title="Zoznam (Ctrl+G prepína)" aria-label="Zoznam"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"></path><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01" stroke-width="3"></path></svg></button>
+          <button type="button" data-mode="gallery" id="modeGallery" title="Galéria (Ctrl+G prepína)" aria-label="Galéria"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"></rect><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"></rect><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"></rect><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"></rect></svg></button>
+        </div>
+      </div>
     </div>
     <div class="table-wrap" id="tableWrap">
       <table class="files" id="files">
@@ -131,6 +138,21 @@
 </footer>
 
 <div class="toast" id="toast" role="alert" hidden></div>
+
+<!-- uloženie aktuálneho filtra (Moje filtre) -->
+<div class="dlg-back" id="viewDlg" hidden>
+  <form class="dlg" id="viewForm" autocomplete="off">
+    <div class="dlg-title">Uložiť aktuálny filter</div>
+    <div class="dlg-sum" id="viewSum"></div>
+    <label for="viewName" class="dlg-label">Názov</label>
+    <input id="viewName" type="text" maxlength="40" spellcheck="false" placeholder="napr. Moje Op10 listy">
+    <div class="dlg-hint">Rovnaký názov prepíše existujúci filter.</div>
+    <div class="dlg-btns">
+      <button type="button" class="btn" id="viewCancel">Zrušiť</button>
+      <button type="submit" class="btn primary">Uložiť</button>
+    </div>
+  </form>
+</div>
 <div class="ctx" id="ctx" role="menu" hidden></div>
 <div class="fmenu" id="fmenu" role="listbox" aria-label="Nájdené zákazky a zákazníci" hidden></div>
 <style id="colHide"></style>
