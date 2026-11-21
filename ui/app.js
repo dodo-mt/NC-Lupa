@@ -407,16 +407,28 @@ function idMatches(term, name) {
 // --- menu zákaziek a zákazníkov pod hľadaním ----------------------------------
 // Pri čísle (od 3 číslic) ukáže zákazky/zákazníkov, ktorých číslo sedí – aj staré zákazky
 // u viacerých zákazníkov (000324 v OD067 aj v OD112). Enter / klik = otvoriť v strome.
-// Poradie: presné číslo (bez núl a predpony) → číslo na začiatku → kdekoľvek v názve.
+// Poradie: presné číslo (bez núl a predpony) → číslo končí zadanými číslicami ('014' = 100014,
+// 24014) → číslo na začiatku → kdekoľvek v názve.
 const FMENU_MAX = 12;
+const FMENU_CUST = 4;   // najviac zákazníkov z FMENU_MAX
 let fmenu = { items: [], more: 0, cur: 0 };
 
 function idRank(term, name) {
   if (idMatches(term, name)) return 0;
   const t = normId(term);
   const n = normId(name);
-  if (t && n && (t.startsWith(':') ? n.slice(n.indexOf(':') + 1).startsWith(t.slice(1)) : n.startsWith(t))) return 1;
-  return name.toLowerCase().includes(term.toLowerCase()) ? 2 : 9;
+  if (t && n) {
+    const [tp, td] = t.split(':');
+    const [np, nd] = n.split(':');
+    if (!tp || tp === np) {
+      // koniec čísla s nulami tak, ako boli napísané ('014' nesedí na 1914)
+      const tRaw = /\d+$/.exec(term.trim())[0];
+      const nRaw = /\d+$/.exec(name.trim())[0];
+      if (nRaw.endsWith(tRaw)) return 1;
+      if (nd.startsWith(td)) return 2;
+    }
+  }
+  return name.toLowerCase().includes(term.toLowerCase()) ? 3 : 9;
 }
 
 function folderHits() {
@@ -434,11 +446,14 @@ function folderHits() {
       if (r < 9) hits.push({ kind: 'job', r, name: j.name, c, j });
     }
   }
-  hits.sort((a, b) => cmp(a, b) || (a.kind === 'job' ? -1 : 1));
-  const shown = hits.slice(0, FMENU_MAX);
-  // zobrazenie po skupinách: najprv zákazky, potom zákazníci (v rámci skupiny poradie podľa zhody)
-  const items = [...shown.filter((h) => h.kind === 'job'), ...shown.filter((h) => h.kind === 'cust')];
-  return { items, more: hits.length - shown.length };
+  hits.sort(cmp);
+  // po skupinách: najprv zákazky, potom zákazníci – zákazníci majú vlastné miesta,
+  // inak by ich pri krátkom čísle vytlačili desiatky zákaziek
+  const jobs = hits.filter((h) => h.kind === 'job');
+  const custs = hits.filter((h) => h.kind === 'cust');
+  const nc = Math.min(custs.length, FMENU_CUST);
+  const items = [...jobs.slice(0, FMENU_MAX - nc), ...custs.slice(0, nc)];
+  return { items, more: hits.length - items.length };
 }
 
 function updateFolderMenu() {
