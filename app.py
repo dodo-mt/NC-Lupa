@@ -60,6 +60,7 @@ class Api:
         self._idx = None                  # (značka DB, ViewIndex, cesty) – podobné výkresy
         self._idx_lock = threading.Lock()
         self._cols = (None, "")           # (kópia DB, stĺpce súborov) – stará DB nemá files.target
+        self._links = (None, [])          # (kópia DB, odkazy .lnk) – „Odkazujú sem“
 
     def _file_cols(self) -> str:
         """Stĺpce súborov pre UI; files.target (cieľ .lnk) má len DB od skenera 1.3.2."""
@@ -95,6 +96,13 @@ class Api:
     def db_progress(self) -> dict | None:
         p = self._copy.progress
         return {"done": p[0], "total": p[1]} if p else None
+
+    def check_updates(self) -> dict:
+        """Volá UI pravidelne: značka aktuálnej kópie DB (zmena = skener zverejnil novú DB,
+        kópia sa medzitým urobila na pozadí) a nová verzia Lupy na L:\\_Lupa (spúšťač)."""
+        path = self._copy.path()
+        return {"db": path.name if path else None, "offline": self._copy.offline,
+                "app": _new_app_version()}
 
     # --- údaje pre UI ------------------------------------------------------
     def get_meta(self) -> dict:
@@ -157,6 +165,10 @@ class Api:
         for j in jobs:
             j["missing"] = config.missing_parts(jtypes.get(j["id"], set()), jexts.get(j["id"], set()))
             by_cust.setdefault(j.pop("customer_id"), []).append(j)
+        linked = self._linked_jobs()
+        for j in jobs:
+            if j["id"] in linked:
+                j["linked"] = True
         for c in customers:
             c["jobs"] = by_cust.get(c["id"], [])
         return customers
@@ -235,6 +247,71 @@ class Api:
         if not os.path.exists(path):
             return {"ok": False, "error": f"Cieľ odkazu neexistuje:\n{path}"}
         return {"ok": False, "error": f"Cieľ odkazu nie je v Lupe (mimo zákaziek):\n{path}"}
+
+    def _link_index(self) -> list[dict]:
+        """Všetky odkazy .lnk so známym cieľom a zákazkou, do ktorej cieľ patrí – raz na kópiu DB.
+        Odkazov je málo (tisíce); dotaz cez LIKE na všetky súbory pri každom kliknutí by bol pomalý.
+        Položka: file_id, src (zákazka s odkazom), rel (jej priečinok), target, dst (zákazka cieľa / None)."""
+        path = self._copy.path()
+        if self._links[0] != path:
+            links = []
+            if "f.target" in self._file_cols():   # stará DB stĺpec target nemá
+                jobs = {r["path"].lower().rstrip("\\"): r["id"] for r in self._q("SELECT id, path FROM jobs")}
+                for r in self._q("SELECT f.id, f.job_id, f.target, p.rel_path FROM files f"
+                                 " JOIN positions p ON p.id = f.position_id"
+                                 " WHERE f.target IS NOT NULL AND f.target <> ''"):
+                    # zákazka cieľa = najbližší nadradený priečinok, ktorý je zákazkou
+                    cur, dst = r["target"].lower().rstrip("\\"), None
+                    while cur:
+                        dst = jobs.get(cur)
+                        parent = os.path.dirname(cur)
+                        if dst is not None or parent == cur:
+                            break
+                        cur = parent
+                    links.append({"file_id": r["id"], "src": r["job_id"], "rel": r["rel_path"],
+                                  "target": r["target"], "dst": dst})
+            self._links = (path, links)
+        return self._links[1]
+
+    def _linked_jobs(self) -> set[int]:
+        """Zákazky s odkazom na inú zákazku alebo s odkazom z inej (ikonka v strome)."""
+        out = set()
+        for k in self._link_index():
+            if k["dst"] is not None and k["dst"] != k["src"]:
+                out.add(k["src"])
+                out.add(k["dst"])
+        return out
+
+    def get_links(self, job_id: int) -> dict:
+        """Odkazy .lnk zákazky oboma smermi, po zákazkách (novšie prvé):
+        to   – kam vedú odkazy z tejto zákazky: {job_id | None (mimo zákaziek), target, links}
+        from – zákazky s odkazom sem: {job_id, file_id, rel (skok priamo na odkaz), links}"""
+        to: dict = {}
+        frm: dict = {}
+        for k in self._link_index():
+            if k["src"] == job_id and k["dst"] != job_id:
+                key = k["dst"] if k["dst"] is not None else "?" + k["target"].lower()
+                h = to.get(key)
+                if h:
+                    h["links"] += 1
+                else:
+                    to[key] = {"job_id": k["dst"], "target": k["target"], "links": 1}
+            elif k["dst"] == job_id and k["src"] != job_id:
+                h = frm.get(k["src"])
+                if h:
+                    h["links"] += 1
+                else:
+                    frm[k["src"]] = {"job_id": k["src"], "file_id": k["file_id"], "rel": k["rel"], "links": 1}
+        ids = {h["job_id"] for h in [*to.values(), *frm.values()] if h["job_id"] is not None}
+        changed = {}
+        if ids:
+            marks = ",".join("?" * len(ids))
+            for r in self._q(f"SELECT * FROM jobs WHERE id IN ({marks})", tuple(ids)):
+                changed[r["id"]] = r.get("last_change") or r.get("dir_mtime")
+        for h in [*to.values(), *frm.values()]:
+            h["changed"] = changed.get(h["job_id"])
+        order = lambda h: -(h["changed"] or 0)
+        return {"to": sorted(to.values(), key=order), "from": sorted(frm.values(), key=order)}
 
     def copy_text(self, text: str) -> dict:
         """Do schránky Windows (clipboard API prehliadača v okne nemusí byť povolené)."""
@@ -419,6 +496,19 @@ class Api:
 
 
 WEB_STORAGE = config.LOCAL_DIR / "webview"
+
+
+def _new_app_version() -> str | None:
+    """Verzia Lupy v L:\\_Lupa\\app, ak je iná ako spustená (len pri spustení cez spúšťač –
+    beží kópia v %LOCALAPPDATA%, vedľa nej je jej version.txt). Inak None."""
+    if not (getattr(sys, "frozen", False) and os.environ.get("LUPA_HOME")):
+        return None
+    try:
+        mine = (Path(sys.executable).parent / "version.txt").read_text(encoding="utf-8-sig").strip()
+        src = (Path(os.environ["LUPA_HOME"]) / "app" / "version.txt").read_text(encoding="utf-8-sig").strip()
+    except OSError:  # L:\ nedostupný – nič nehlásiť
+        return None
+    return src if src and src != mine else None
 
 
 def clear_web_cache(storage: Path = WEB_STORAGE):

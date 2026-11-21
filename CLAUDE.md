@@ -132,7 +132,7 @@ prints(path, size, modified, version, views)   -- odtlačky PDF, views = odtlack
 - Hľadanie podľa časti názvu: `LIKE '%…%'` (pri raste zvážiť FTS5).
 - Odhad veľkosti: ~150 000 súborov → desiatky MB.
 
-## Stav projektu (aktuálne 1.3.4)
+## Stav projektu (aktuálne 1.3.6)
 
 Hotové: verzia 1 (nižšie) + náhľady, galéria, NC/TXT náhľad, kontrola úplnosti, exe, ikona skenu
 pri hodinách, stavový riadok, kontextové menu stromu, podobné výkresy, filter zákazníkov v `lupa.ini`,
@@ -154,6 +154,8 @@ vlastníci, strom šípkami, menu zákaziek pod hľadaním.
 **1.3.3 (21.11.2026)**: menu zákaziek – koniec čísla (`014` = `100014`) pred „začína na“, zákazníci
 majú vlastné 4 miesta.
 **1.3.4**: menu zákaziek – `OD…` pred starými, novšie skôr, rok zmeny pri zákazke.
+**1.3.5** (len build, bez tagu): tlačidlo Obnoviť (F5), upozornenie na novú verziu Lupy, „Odkazujú sem“.
+**1.3.6**: odkazy .lnk oboma smermi + ikonka v strome, náhľady DXF a DWG (`vykres.py`).
 Pozor: po kopírovaní na L:\ zavrieť bežiacu Lupu (aj na lište), inak ostane stará.
 Potom u používateľa: `dist\Lupa\` → `L:\_Lupa\` (celý priečinok, aj `app\`), na PC so skenerom znova
 `ikona_skenu.bat` (nový skener preradí typy, vyhodí skryté súbory, doplní ciele .lnk – bez úplného skenu).
@@ -163,15 +165,18 @@ Overiť: ciele odkazov .lnk na sieťovom L:\ (lokálne netestovateľné), menu z
 v zozname/galérii so stĺpcom Podobnosť, Esc = späť; `Api.similar`, index v pamäti do zmeny DB).
 Slabé miesto: náš `drw0001` ↔ výkres zákazníka (iné rozloženie pohľadov) – neskôr kombinácia s STP.
 
-**Ďalšie možné kroky**: vlastné vykreslenie náhľadu STL (Windows ho bez doplnku nevie),
-tlačidlo „Obnoviť“ v Lupe bez reštartu.
+**Ďalšie možné kroky**: STL – v práci ho Windows už ukazuje (doplnok), vlastné netreba.
+**Náhľad STP – odložené** (skúška 21.11.2026 mimo projektu): gmsh/OpenCascade načítal STP a rozmery,
+ale vykreslil len 17/47 vzoriek (zlyháva sieť trojuholníkov hlavne pri dieloch z Crea, pády,
+limity), +86 MB. Ak znova: priamo OpenCascade (`cadquery-ocp`, BRepMesh – spoľahlivejšie, ~+150 MB);
+rozmery zo STP by sa hodili k podobným výkresom.
 
 **Na rade (21.11.2026)**:
 - Pomalý štart (16 s cez sieť – meranie `zmeraj_start.py`: počet odtlačkov 8,3 s, úplnosť 4,7 s) →
   lokálna kópia DB + pásik priebehu (overené, ~5 s – zvyšok bol štart onefile exe) → spúšťač + onedir
   (overené na L:\).
 - ✅ Filter vlastníka: počty súborov len vo vybranej zákazke / u zákazníka (`get_owners(params)`).
-- **Odkazy .lnk – fáza 2** (neskôr): pri starej zákazke ukázať „odkazujú sem: zákazky X, Y“.
+- ✅ Odkazy .lnk – fáza 2: pri starej zákazke „Odkazujú sem: zákazky X, Y“ (1.3.5).
 
 ## Verzia 1 – rozsah (hotové)
 
@@ -185,6 +190,11 @@ tlačidlo „Obnoviť“ v Lupe bez reštartu.
 ## Rozšírenia (postupne, každé zvlášť)
 
 1. ✅ Pravý panel s detailom a **náhľadmi** (PDF cez PyMuPDF; ostatné cez Windows shell `IShellItemImageFactory`; NC/TXT ako text), cache v `%LOCALAPPDATA%\Lupa\thumbs`.
+   **DXF / DWG** (`vykres.py`, 1.3.6): ezdxf → PyMuPDF (čierne na bielom ako tlač; entita, ktorá
+   zlyhá, sa vynechá). DWG najprv `dwg2dxf.exe` z LibreDWG 0.13.3 (GPLv3, samostatný exe, `app\libredwg\`;
+   `build.py` ho stiahne do `tools\libredwg\` – mimo gitu – a overí SHA-256) do `%LOCALAPPDATA%\Lupa\tmp`.
+   Kreslí sa len veľký náhľad, galéria dostane zmenšeninu; veľký výkres aj ~15 s (potom z cache).
+   Nevykreslený výkres → náhľad/ikona z Windows. Vo vzorkách 17/17 (aj staré DWG R14).
 2. ✅ **Galéria** – mriežka náhľadov, posuvník veľkosti, triedenie.
 3. ✅ Kontrola **úplnosti zákazky** (Model / PDF / CAM / NC / Listy) – stav v strome + štítky.
 4. ✅ Exe na `L:\_Lupa\` (`build.py`) + ikona skenu pri hodinách (namiesto Plánovača úloh).
@@ -203,6 +213,9 @@ Schválený návrh UI (maketa): https://claude.ai/artifact/MHEAKvNtdfXvU9EaucAA1
 - **Stavový riadok** dole (nenápadný): vľavo koreň + počty z DB, vpravo „Posledný sken“
   (oranžovo, ak je starší ako 24 h). Čas skenu z `lupa_scan.json` vedľa DB – skener ho zapisuje
   pri každom skene, aj keď DB nepublikuje.
+  **Obnoviť** (vpravo, F5 / Ctrl+R) = načíta znova strom, vlastníkov, počty a zoznam, výber ostane.
+  Každých 30 s `Api.check_updates`: nová kópia DB (skener zverejnil) → tlačidlo zmodrie „Nové údaje –
+  Obnoviť“; iná `L:\_Lupa\app\version.txt` ako spustená → oranžovo „Nová verzia Lupy – zavri a spusti znova“.
 - Strom: klik na zákazníka = súbory všetkých jeho zákaziek; pravé tlačidlo = rozbaliť/zbaliť, otvoriť priečinok.
   Klávesnica (fokus v strome): ↑/↓ posun (súbory po 250 ms), ← zbaliť / na nadradený, → rozbaliť /
   na prvý podriadený, Home/End. Otvorený zákazník sa pri rolovaní drží hore (`.cgroup`, sticky).
@@ -212,6 +225,11 @@ Schválený návrh UI (maketa): https://claude.ai/artifact/MHEAKvNtdfXvU9EaucAA1
 - **Odkazy .lnk** (z nových zákaziek na staré): skener číta cieľ (`lnk.py`, bez COM, záloha IShellLink)
   do `files.target` (UNC koreňa → `L:\`; '' = nezistiteľný). V zozname „→ cieľ“, dvojklik / „Prejsť
   na cieľ odkazu“ = `Api.locate` → skok v strome (najbližší priečinok, ak presný cieľ v DB nie je).
+  Pod nadpisom zákazky (`Api.get_links`, index odkazov v pamäti raz na kópiu DB, cieľ → zákazka
+  = najbližší nadradený priečinok, ktorý je zákazkou): **→ Odkazuje na** (staré zákazky; klik = cieľ
+  odkazu cez `locate`, cieľ mimo zákaziek sivo „mimo Lupy“) a **← Odkazujú sem** (novšie zákazky;
+  klik = samotný odkaz). Číslo, zákazník, rok; novšie prvé, najviac 8. Ikonka reťaze v strome
+  pri zákazkách s odkazom ktorýmkoľvek smerom (`jobs[].linked` v `get_tree`).
 - Vlastník sa zobrazuje s veľkým začiatočným písmenom (`ownerName`), v DB pôvodný tvar.
 - Stĺpce: dátumy bez času (čas v bublinke a v detaile), pravé tlačidlo na hlavičke = zobraziť/skryť
   stĺpce (`lupa.cols.v2`, `lupa.cols.hidden` v localStorage).
@@ -241,7 +259,7 @@ neskôr možno (napr. „otvoriť v NC editore“).
 - Malé kroky, po každom kroku nech sa dá aplikácia spustiť a vyskúšať.
 - **Verzia** je v `config.VERSION` (zobrazí sa v UI, menu ikony skenu, logu a vo vlastnostiach exe).
   Pri vydaní novej verzie pre `L:\_Lupa\` ju zvýš a pridaj git tag `vX.Y.Z`.
-- `requirements.txt` udržuj aktuálny (pywebview, pywin32, PyMuPDF, numpy).
+- `requirements.txt` udržuj aktuálny (pywebview, pywin32, PyMuPDF, numpy, ezdxf, pillow).
 - Konfigurácia (cesta k `L:\`, cesta k DB) v `config.py` / `lupa.ini`, nie natvrdo v kóde.
   Vzor: `lupa.ini.example`; lokálny `lupa.ini` (mimo gitu) ukazuje pri vývoji na `vzorky`.
 - Pracuj **len v adresári projektu**. Testovacie dáta sú v `vzorky\` (kópia štruktúry `L:\`, **nikdy na git**).

@@ -1,4 +1,5 @@
-"""Náhľady súborov – PDF cez PyMuPDF, ostatné cez Windows shell (IShellItemImageFactory).
+"""Náhľady súborov – PDF cez PyMuPDF, DXF/DWG cez vykres.py, ostatné cez Windows shell
+(IShellItemImageFactory).
 
 Náhľady sa ukladajú ako PNG do config.THUMBS_DIR. Kľúč cache = cesta + mtime + veľkosť,
 takže zmenený súbor dostane nový náhľad. Zo zdrojového súboru sa len číta.
@@ -13,6 +14,7 @@ from pathlib import Path
 import pymupdf
 
 import config
+import vykres
 
 log = logging.getLogger("lupa.thumbs")
 
@@ -119,7 +121,9 @@ def _shell_image(path: str, flags: int, px: int) -> pymupdf.Pixmap:
 # Verejné API
 # ---------------------------------------------------------------------------
 def _cache_path(path: str, st: os.stat_result, px: int) -> Path:
-    key = f"{path.lower()}|{st.st_mtime_ns}|{st.st_size}|{px}|v2"
+    # DXF/DWG: vlastná verzia kľúča – staršie Lupy pre ne uložili len ikonu z Windows
+    ver = "d1" if Path(path).suffix.lower().lstrip(".") in vykres.EXTS else "v2"
+    key = f"{path.lower()}|{st.st_mtime_ns}|{st.st_size}|{px}|{ver}"
     return config.THUMBS_DIR / (hashlib.sha1(key.encode("utf-8")).hexdigest() + ".png")
 
 
@@ -128,6 +132,26 @@ def _render_pdf(path: str, px: int) -> tuple[pymupdf.Pixmap, int]:
         page = doc[0]
         zoom = min(px / max(page.rect.width, 1), 4.0)
         return page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False), doc.page_count
+
+
+def _render_drawing(path: str, st: os.stat_result, px: int) -> pymupdf.Pixmap:
+    """DXF / DWG (vykres.py). Kreslenie je pomalšie ako PDF (veľký výkres aj desiatky sekúnd),
+    preto sa vždy kreslí len veľký náhľad a galéria dostane jeho zmenšeninu."""
+    big = SIZES["l"]
+    lcache = _cache_path(path, st, big)
+    if lcache.exists():
+        pix = pymupdf.Pixmap(str(lcache))
+    else:
+        pix = vykres.render(path, big)
+        if px < big:   # veľký náhľad uložiť hneď (detail ho potom nekreslí znova)
+            config.THUMBS_DIR.mkdir(parents=True, exist_ok=True)
+            pix.save(str(lcache))
+            lcache.with_suffix(".txt").write_text("drawing|0", encoding="ascii")
+    longest = max(pix.width, pix.height)
+    if px < big and longest > px:
+        f = px / longest
+        pix = pymupdf.Pixmap(pix, max(1, int(pix.width * f)), max(1, int(pix.height * f)), None)
+    return pix
 
 
 TEXT_EXTS = {"txt"}    # okrem typu NC sa ako text ukazujú aj tieto prípony
@@ -173,11 +197,18 @@ def get_thumb(path: str, ftype: str, size: str = "l") -> dict:
         return {"ok": True, "file": str(cache), "kind": kind, "pages": int(pages or 0)}
 
     pages = 0
+    pix = None
     try:
         if ftype == "PDF":
             pix, pages = _render_pdf(path, px)
             kind = "pdf"
-        else:
+        elif Path(path).suffix.lower().lstrip(".") in vykres.EXTS:
+            try:
+                pix = _render_drawing(path, st, px)
+                kind = "drawing"
+            except Exception as e:   # nevykreslený výkres – aspoň náhľad / ikona z Windows (nižšie)
+                log.warning("Výkres sa nepodarilo vykresliť %s: %s", path, e)
+        if pix is None:
             try:
                 pix = _shell_image(path, _SIIGBF_BIGGERSIZEOK | _SIIGBF_THUMBNAILONLY, px // 2)
                 kind = "shell"

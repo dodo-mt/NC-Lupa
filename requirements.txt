@@ -2,5 +2,7 @@ pywebview>=6.2
 pywin32>=312
 pymupdf>=1.28
 numpy>=2.0
+ezdxf>=1.4      # náhľad DXF/DWG (vykres.py)
+pillow>=11      # potrebuje ezdxf na kreslenie
 # len na zostavenie exe (build.py)
 pyinstaller>=6.22

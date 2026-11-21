@@ -206,7 +206,7 @@ function renderTree() {
       for (const j of c.jobs) {
         const jOpen = state.openJobs.has(j.id);
         out.push(`<div class="node job${jOpen ? ' open' : ''}${isSelNode(j.id, '') ? ' sel' : ''}" data-job="${j.id}" style="padding-left:22px">
-          <span class="tw">${j.subdirs ? ICON_CHEVRON : ''}</span><span class="lbl">${esc(j.name)}</span>${complStatus(j.missing)}</div>`);
+          <span class="tw">${j.subdirs ? ICON_CHEVRON : ''}</span><span class="lbl">${esc(j.name)}</span>${j.linked ? `<span class="lk" title="Odkazy .lnk na iné zákazky alebo z iných zákaziek">${ICON_LINK}</span>` : ''}${complStatus(j.missing)}</div>`);
         if (jOpen && state.positions[j.id]) renderDirs(out, j.id, buildDirTree(state.positions[j.id]), 2);
       }
     }
@@ -749,6 +749,73 @@ async function refresh() {
   renderDetail();
 }
 
+// --- odkazy .lnk medzi zákazkami (oboma smermi) --------------------------------
+// Nová zákazka: „→ Odkazuje na“ staré zákazky (klik = cieľ odkazu v strome).
+// Stará zákazka: „← Odkazujú sem“ novšie zákazky (klik = samotný odkaz v novej zákazke).
+const jobLinks = new Map();   // jobId -> {to: [...], from: [...]} (Api.get_links)
+const ICON_LINK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"></path><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"></path></svg>';
+const LINKS_MAX = 8;
+
+function linkCount(n) {
+  return `${n} ${n === 1 ? 'odkaz' : n <= 4 ? 'odkazy' : 'odkazov'}`;
+}
+
+// Jedna položka (zákazka) v riadku odkazov
+function linkItem(h, i, dir) {
+  const f = h.job_id != null ? findJob(h.job_id) : null;
+  if (!f) {   // cieľ mimo zákaziek v Lupe (iný disk, zmazaný…)
+    const name = h.target.split('\\').filter(Boolean).pop() || h.target;
+    return `<button type="button" class="bl-item out" data-dir="${dir}" data-i="${i}" title="${esc(h.target)}\nCieľ nie je v žiadnej zákazke v Lupe">` +
+      `<span class="mono">${esc(name)}</span><span class="bl-yr">mimo Lupy</span></button>`;
+  }
+  const yr = h.changed ? new Date(h.changed * 1000).getFullYear() : '';
+  const cust = f.cust.name.split('-')[0];
+  const where = dir === 'to' ? h.target : `${f.cust.name} \\ ${f.job.name}${h.rel ? ' \\ ' + h.rel : ''}`;
+  const tip = `${where}\n${linkCount(h.links)} – klik = ${dir === 'to' ? 'ukázať cieľ' : 'ukázať odkaz'} v strome`;
+  return `<button type="button" class="bl-item" data-dir="${dir}" data-i="${i}" title="${esc(tip)}">` +
+    `<span class="mono">${esc(f.job.name)}</span><span class="bl-cust">${esc(cust)}</span>` +
+    `${yr ? `<span class="bl-yr">${yr}</span>` : ''}</button>`;
+}
+
+function linkRow(list, dir) {
+  if (!list.length) return '';
+  const label = dir === 'to' ? 'Odkazuje na:' : 'Odkazujú sem:';
+  const items = list.slice(0, LINKS_MAX).map((h, i) => linkItem(h, i, dir));
+  if (list.length > LINKS_MAX) items.push(`<span class="bl-more">a ďalšie ${list.length - LINKS_MAX}</span>`);
+  return `<div class="bl-row ${dir}">${ICON_LINK}<span class="bl-label">${label}</span>${items.join('')}</div>`;
+}
+
+async function renderLinks(jobId) {
+  const box = $('links');
+  box.dataset.job = jobId || '';
+  if (!jobId) { box.hidden = true; return; }
+  if (!jobLinks.has(jobId)) {
+    box.hidden = true;
+    let r;
+    try { r = await api.get_links(jobId); } catch (e) { r = null; }
+    jobLinks.set(jobId, r || { to: [], from: [] });
+    if (box.dataset.job !== String(jobId)) return;   // medzitým iný výber
+  }
+  const r = jobLinks.get(jobId);
+  const lists = { to: r.to, from: r.from.filter((h) => findJob(h.job_id)) };
+  const html = linkRow(lists.to, 'to') + linkRow(lists.from, 'from');
+  if (!html) { box.hidden = true; return; }
+  box.innerHTML = html;
+  box.querySelectorAll('.bl-item').forEach((b) => {
+    b.onclick = async () => {
+      const h = lists[b.dataset.dir][Number(b.dataset.i)];
+      if (b.dataset.dir === 'to') {
+        await gotoLink({ target: h.target });   // cieľ odkazu (priečinok / súbor v starej zákazke)
+      } else {
+        clearSearchQuiet();
+        state.selFile = h.file_id;   // označiť priamo odkaz v novej zákazke
+        await gotoJob(h.job_id, h.rel);
+      }
+    };
+  });
+  box.hidden = false;
+}
+
 function renderHead() {
   const all = state.scope === 'all';
   const f = state.sel && state.sel.job ? findJob(state.sel.job) : null;
@@ -779,6 +846,7 @@ function renderHead() {
   $('heading').innerHTML = heading;
   if ($('simClose')) $('simClose').onclick = () => exitSimilar();
   renderCompl();
+  renderLinks(f && !state.similar && !all ? f.job.id : null);
 
   const n = state.total;
   let cnt = '';
@@ -1163,6 +1231,7 @@ function bind() {
   $('q').addEventListener('blur', closeFolderMenu);
   window.addEventListener('resize', closeFolderMenu);
   $('qClear').addEventListener('click', () => { clearSearch(); $('q').focus(); });
+  $('stReload').addEventListener('click', reloadData);
 
   // filtre
   bindOwnerDropdown();
@@ -1252,6 +1321,12 @@ function bind() {
 
   // klávesnica: Ctrl+F = hľadanie, šípky = pohyb v zozname, Enter = otvoriť
   document.addEventListener('keydown', (e) => {
+    // F5 / Ctrl+R = obnoviť údaje (nie celú stránku – tá by začala od štartu)
+    if (e.key === 'F5' || (e.ctrlKey && (e.key === 'r' || e.key === 'R'))) {
+      e.preventDefault();
+      reloadData();
+      return;
+    }
     if (e.ctrlKey && (e.key === 'f' || e.key === 'F')) {
       e.preventDefault();
       $('q').focus();
@@ -1546,6 +1621,66 @@ function renderStatus() {
   }
 }
 
+// --- obnovenie údajov bez reštartu --------------------------------------------
+// Skener zverejní novú DB → kópia sa na pozadí vymení (dbcopy), strom v okne je ale zo štartu.
+// Každých UPDATE_EVERY ms sa zistí, či je nová kópia (tlačidlo Obnoviť zmodrie) a či je
+// na L:\_Lupa nová verzia Lupy (upozornenie – treba ju zavrieť a spustiť znova).
+const UPDATE_EVERY = 30000;
+let dbTag = null;
+let reloading = false;
+
+async function checkUpdates() {
+  let u;
+  try { u = await api.check_updates(); } catch (e) { return; }
+  const isNew = !!(dbTag && u.db && u.db !== dbTag);
+  $('stReload').classList.toggle('new', isNew);
+  $('stReloadText').textContent = isNew ? 'Nové údaje – Obnoviť' : 'Obnoviť';
+  $('stReload').title = isNew ? 'Skener medzitým aktualizoval databázu – načítať nové údaje (F5)'
+    : 'Načítať znova údaje z databázy (F5)';
+  const ver = u.app ? u.app.split('+')[0] : '';
+  $('stUpdate').textContent = u.app ? `Nová verzia Lupy ${ver} – zavri Lupu a spusti ju znova` : '';
+  $('stUpdate').title = u.app ? `Na disku je zostavenie ${u.app}, beží ${state.meta.version}.` : '';
+  if (state.meta && u.offline !== state.meta.offline) { state.meta.offline = u.offline; renderStatus(); }
+}
+
+// Načíta znova strom, vlastníkov, počty a zoznam; výber, rozbalenie a filtre ostanú.
+async function reloadData() {
+  if (reloading || !state.meta || !state.meta.db_ok) return;
+  reloading = true;
+  $('stReload').classList.add('busy');
+  try {
+    const meta = await api.get_meta();
+    state.meta = meta;
+    ownersKey = null;
+    await loadOwners();
+    state.tree = await api.get_tree();
+    dbTag = (await api.check_updates()).db;
+    state.positions = {};
+    jobLinks.clear();
+    const custIds = new Set(state.tree.map((c) => c.id));
+    const jobIds = new Set(state.tree.flatMap((c) => c.jobs.map((j) => j.id)));
+    state.openCust = new Set([...state.openCust].filter((id) => custIds.has(id)));
+    state.openJobs = new Set([...state.openJobs].filter((id) => jobIds.has(id)));
+    if (state.sel && !(state.sel.job ? jobIds.has(state.sel.job) : custIds.has(state.sel.cust))) state.sel = null;
+    // priečinky otvorených zákaziek (a vybranej) treba načítať z novej DB
+    const need = new Set(state.openJobs);
+    if (state.sel && state.sel.job) need.add(state.sel.job);
+    await Promise.all([...need].map(ensurePositions));
+    renderTree();
+    renderScope();
+    await refresh();
+    renderStatus();
+    $('stReload').classList.remove('new');
+    $('stReloadText').textContent = 'Obnoviť';
+    toast(`Údaje obnovené – ${state.meta.counts ? state.meta.counts.jobs.toLocaleString('sk-SK') + ' zákaziek' : 'hotovo'}`);
+  } catch (e) {
+    toast(`Obnovenie zlyhalo: ${(e && (e.message || e.toString())) || 'neznáma chyba'}`);
+  } finally {
+    reloading = false;
+    $('stReload').classList.remove('busy');
+  }
+}
+
 // --- priebeh načítania pri štarte (pásik nad stavovým riadkom) --------------
 // Kopírovanie DB má skutočné percentá; ostatné kroky sú jeden dotaz, tam sa pásik
 // v rámci dielu kroku pomaly posúva, aby nestál.
@@ -1667,6 +1802,9 @@ async function initApp() {
   loadDone();
   renderStatus();
   $('q').focus();
+  dbTag = (await api.check_updates()).db;
+  checkUpdates();
+  setInterval(checkUpdates, UPDATE_EVERY);
 }
 
 bind();

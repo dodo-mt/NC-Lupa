@@ -97,6 +97,37 @@ def pyinstaller(script: str, name: str, desc: str, extra: list[str],
     subprocess.run(cmd, check=True, cwd=ROOT)
 
 
+# LibreDWG (GPLv3) – dwg2dxf.exe na náhľad DWG (vykres.py). Do gitu nejde (35 MB), stiahne sa
+# z oficiálneho vydania a overí podľa SHA-256 (zmena verzie = nová adresa aj odtlačok).
+LIBREDWG_URL = "https://github.com/LibreDWG/libredwg/releases/download/0.13.3/libredwg-0.13.3-win64.zip"
+LIBREDWG_SHA256 = "b5133f8b6bd71b7e682a06ef5f99c93b40d628a791c30a31924a80d258c87173"
+LIBREDWG_FILES = ["dwg2dxf.exe", "libredwg-0.dll", "libiconv-2.dll", "libpcre2-8-0.dll",
+                  "libpcre2-16-0.dll", "README.txt"]
+
+
+def ensure_libredwg() -> Path:
+    """tools\\libredwg\\ s dwg2dxf.exe (stiahne pri prvom zostavení)."""
+    import hashlib
+    import io
+    import urllib.request
+    import zipfile
+
+    import vykres
+    dst = vykres.libredwg_dir()
+    if all((dst / f).exists() for f in LIBREDWG_FILES):
+        return dst
+    print(f"Sťahujem LibreDWG: {LIBREDWG_URL}")
+    data = urllib.request.urlopen(LIBREDWG_URL, timeout=120).read()
+    digest = hashlib.sha256(data).hexdigest()
+    if digest != LIBREDWG_SHA256:
+        raise SystemExit(f"LibreDWG: nesedí SHA-256 ({digest}) – súbor sa nepoužije.")
+    dst.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        for f in LIBREDWG_FILES:
+            (dst / f).write_bytes(z.read(f))
+    return dst
+
+
 def make_icons():
     make_icon(ICON)
     make_icon(ICON_SCAN, dot=True)
@@ -112,14 +143,16 @@ def main():
     pyinstaller("app.py", "Lupa", "Lupa – prehliadač zákaziek", ["--add-data", f"{ROOT / 'ui'};ui"],
                 onedir=True, dist=BUILD / "onedir", tag="Lupa-app")
     shutil.move(BUILD / "onedir" / "Lupa", OUT / "app")
+    shutil.copytree(ensure_libredwg(), OUT / "app" / "libredwg")   # náhľad DWG (vykres.py)
     stamp = f"{config.VERSION}+{time.strftime('%Y%m%d-%H%M%S')}"  # aj zostavenie bez novej verzie sa prenesie
     (OUT / "app" / "version.txt").write_text(stamp, encoding="utf-8")
     pyinstaller("launcher.py", "Lupa", "Lupa – prehliadač zákaziek", [
         "--exclude-module", "webview", "--exclude-module", "numpy", "--exclude-module", "pymupdf",
+        "--exclude-module", "ezdxf", "--exclude-module", "PIL",
     ], tag="Lupa-spustac")
     pyinstaller("scanner.py", "lupa-sken", "Lupa – sken zákaziek", [
         "--add-data", f"{ASSETS};assets",
-        "--exclude-module", "webview",
+        "--exclude-module", "webview", "--exclude-module", "ezdxf", "--exclude-module", "PIL",
     ])
     # sprievodné súbory: všetko z deploy\ + vzor nastavení
     for f in (ROOT / "deploy").iterdir():
