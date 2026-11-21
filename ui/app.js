@@ -46,6 +46,7 @@ let reqSeq = 0;
 
 // --- pomocné ---------------------------------------------------------------
 const ICON_CHEVRON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>';
+const ICON_CHECK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -75,6 +76,22 @@ function fmtDate(ts) {
   const d = new Date(ts * 1000);
   const p = (n) => String(n).padStart(2, '0');
   return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// v zozname len dátum (užší stĺpec) – čas je v bublinke a v detaile
+function fmtDay(ts) {
+  return fmtDate(ts).slice(0, 10);
+}
+
+// Vlastník s veľkým začiatočným písmenom (v DB ostáva pôvodný tvar – podľa neho sa filtruje)
+function ownerName(o) {
+  return o ? o.charAt(0).toUpperCase() + o.slice(1) : '';
+}
+
+// Cesta bez koreňa ('L:\100020\009712' -> '100020\009712')
+function shortPath(p) {
+  const r = state.meta.root.replace(/[\\/]+$/, '') + '\\';
+  return p && p.toLowerCase().startsWith(r.toLowerCase()) ? p.slice(r.length) : (p || '');
 }
 
 function fmtSize(b) {
@@ -429,27 +446,89 @@ function onTreeContext(e) {
     state.openJobs.clear();
     state.openDirs.clear();
   }]);
+  showMenu(e, items, renderTree);
+}
 
+// Kontextové menu pri myši. items: [text, akcia] | {text, action, checked} | '-' | {title}
+// after = čo urobiť po akcii (napr. prekresliť strom)
+function showMenu(e, items, after) {
   const menu = $('ctx');
   const actions = [];
   menu.innerHTML = items.map((it) => {
     if (it === '-') return '<hr>';
     if (it.title) return `<div class="ctx-title">${esc(it.title)}</div>`;
-    actions.push(it[1]);
-    return `<button type="button" role="menuitem" data-i="${actions.length - 1}">${esc(it[0])}</button>`;
+    const [text, action, checked] = Array.isArray(it) ? it : [it.text, it.action, it.checked];
+    actions.push(action);
+    const chk = checked === undefined ? '' : `<span class="ctx-chk">${checked ? ICON_CHECK : ''}</span>`;
+    return `<button type="button" role="menuitem" data-i="${actions.length - 1}">${chk}${esc(text)}</button>`;
   }).join('');
   menu.onclick = async (ev) => {
     const b = ev.target.closest('button');
     if (!b) return;
     hideCtx();
     await actions[Number(b.dataset.i)]();
-    renderTree();
+    if (after) after();
   };
   menu.hidden = false;
   // umiestniť k myši, ale nevyliezť z okna
   const r = menu.getBoundingClientRect();
   menu.style.left = `${Math.min(e.clientX, window.innerWidth - r.width - 4)}px`;
   menu.style.top = `${Math.min(e.clientY, window.innerHeight - r.height - 4)}px`;
+}
+
+// --- súbor: ukázať v strome, odkazy .lnk, kontextové menu --------------------
+// Dvojklik: súbor v strome (zákazka → priečinok, súbor označený). Odkaz .lnk → jeho cieľ.
+async function revealFile(f, followLink = true) {
+  if (followLink && f.target != null) { await gotoLink(f); return; }
+  clearSearchQuiet();
+  state.selFile = f.id;
+  await gotoJob(f.job_id, f.folder || '');
+}
+
+// Odkaz .lnk na inú (starú) zákazku – skok na cieľ v strome
+async function gotoLink(f) {
+  const r = await api.locate(f.target || '');
+  if (!r.ok) { toast(r.error); return; }
+  clearSearchQuiet();
+  if (r.cust_id) {
+    state.openCust.add(r.cust_id);
+    await selectCustomer(r.cust_id);
+    renderTree();
+    const node = $('tree').querySelector('.node.sel');
+    if (node) node.scrollIntoView({ block: 'center' });
+  } else {
+    state.selFile = r.file_id;
+    await gotoJob(r.job_id, r.rel);
+  }
+  if (!r.exact) toast(`Presný cieľ odkazu v Lupe nie je – ukazujem najbližší priečinok.\n${f.target}`);
+}
+
+async function copyText(text) {
+  const r = await api.copy_text(text);
+  toast(r.ok ? `Skopírované: ${text}` : r.error);
+}
+
+function onFileContext(e) {
+  const el = e.target.closest('[data-id]');
+  if (!el) return;
+  e.preventDefault();
+  const id = Number(el.dataset.id);
+  const f = state.files.find((x) => x.id === id);
+  if (!f) return;
+  selectFile(id);
+  const items = [{ title: f.name }, ['Otvoriť', () => openFile(f.id)]];
+  if (f.target != null) items.push(['Prejsť na cieľ odkazu', () => gotoLink(f)]);
+  items.push(['Ukázať v strome', () => revealFile(f, false)]);
+  items.push(['Otvoriť priečinok', () => openFolder(f.id)]);
+  items.push('-');
+  items.push(['Kopírovať cestu', () => copyText(f.path)]);
+  items.push(['Kopírovať názov', () => copyText(f.name)]);
+  if (f.ftype === 'PDF' && !f.query) items.push('-', ['Podobné výkresy', () => startSimilar(f)]);
+  items.push('-');
+  items.push(state.owner && state.owner === f.owner
+    ? ['Zrušiť filter vlastníka', () => pickOwner('')]
+    : [`Len vlastník ${ownerName(f.owner)}`, () => pickOwner(f.owner)]);
+  showMenu(e, items);
 }
 
 async function openPath(path) {
@@ -478,8 +557,26 @@ function selectedTypes() {
   return state.typesOn.size === state.typeKeys.length ? null : [...state.typesOn];
 }
 
+// Vlastníci vo výbere (počty súborov len vo vybranej zákazke / u zákazníka, inak celé L:\)
+let ownersKey = null;
+async function loadOwners() {
+  const p = {};
+  if (!state.similar && state.scope === 'job' && state.sel) {
+    if (state.sel.job) p.job_id = state.sel.job;
+    else p.customer_id = state.sel.cust;
+  }
+  const key = JSON.stringify(p);
+  if (key === ownersKey) return;
+  ownersKey = key;
+  const list = await api.get_owners(p);
+  if (key !== ownersKey) return;   // medzitým iný výber
+  state.owners = list;
+  if (!$('ownerDrop').hidden) renderOwnerList();
+}
+
 // --- zoznam súborov --------------------------------------------------------
 async function refresh() {
+  loadOwners();
   const seq = ++reqSeq;
   const types = selectedTypes();
   let res;
@@ -553,7 +650,7 @@ function renderHead() {
     const k = n - 1;
     cnt = k ? `${k} ${k === 1 ? 'podobný výkres' : k >= 2 && k <= 4 ? 'podobné výkresy' : 'podobných výkresov'}`
       : 'Nenašiel sa žiadny podobný výkres';
-    if (state.owner) cnt += ` · vlastník ${state.owner}`;
+    if (state.owner) cnt += ` · vlastník ${ownerName(state.owner)}`;
   } else if (all || state.sel) {
     cnt = `${n} ${plural(n)}`;
     if (n > state.files.length) cnt += ` · zobrazených ${state.files.length} najnovších`;
@@ -595,14 +692,16 @@ function renderFiles() {
   $('rows').innerHTML = files.map((f) => {
     const loc = all ? (f.folder ? `${f.job} \\ ${f.folder}` : f.job) : f.folder;
     const locTitle = all ? `${f.customer} \\ ${f.job}${f.folder ? ' \\ ' + f.folder : ''}` : f.folder;
+    const link = f.target != null;
+    const nameTitle = link ? `${f.name}\nOdkaz na: ${f.target || 'cieľ sa nedá zistiť'}\nDvojklik = prejsť na cieľ` : f.name;
     return `<tr data-id="${f.id}"${f.id === state.selFile ? ' class="sel"' : ''}>
     <td class="c-type">${badge(f.ftype)}</td>
     <td class="c-sim">${simCell(f)}</td>
-    <td class="c-name" title="${esc(f.name)}">${highlight(f.name)}</td>
+    <td class="c-name" title="${esc(nameTitle)}">${highlight(f.name)}${link ? `<span class="lnk-to">→ ${esc(shortPath(f.target) || '?')}</span>` : ''}</td>
     <td class="c-folder" title="${esc(locTitle)}">${esc(loc)}</td>
-    <td class="c-owner">${esc(f.owner)}</td>
-    <td class="c-date">${fmtDate(f.created)}</td>
-    <td class="c-date">${fmtDate(f.modified)}</td>
+    <td class="c-owner">${esc(ownerName(f.owner))}</td>
+    <td class="c-date k-created" title="${fmtDate(f.created)}">${fmtDay(f.created)}</td>
+    <td class="c-date k-modified" title="${fmtDate(f.modified)}">${fmtDay(f.modified)}</td>
     <td class="c-size">${fmtSize(f.size)}</td></tr>`;
   }).join('');
 
@@ -690,11 +789,12 @@ function renderGallery(files) {
   const all = multiJob();
   $('gallery').innerHTML = files.map((f) => {
     const sub = all ? `${f.job}${f.folder ? ' \\ ' + f.folder : ''}` : (f.folder || '');
-    const date = fmtDate(f.modified).slice(0, 10);
-    return `<div class="card${f.id === state.selFile ? ' sel' : ''}" data-id="${f.id}" title="${esc(f.name)}">
+    const date = fmtDay(f.modified);
+    const title = f.target != null ? `${f.name}\nOdkaz na: ${f.target || 'cieľ sa nedá zistiť'}` : f.name;
+    return `<div class="card${f.id === state.selFile ? ' sel' : ''}" data-id="${f.id}" title="${esc(title)}">
       <div class="g-thumb" data-id="${f.id}"><span class="pv-msg"></span></div>
       <div class="g-name">${badge(f.ftype)}<span>${highlight(f.name)}</span></div>
-      <div class="g-sub">${state.similar ? simTag(f) + ' · ' : ''}${esc(sub)}${sub ? ' · ' : ''}${date} · ${esc(f.owner)}</div>
+      <div class="g-sub">${state.similar ? simTag(f) + ' · ' : ''}${esc(sub)}${sub ? ' · ' : ''}${date} · ${esc(ownerName(f.owner))}</div>
     </div>`;
   }).join('');
 
@@ -787,9 +887,10 @@ function selectFile(id, scroll) {
 function renderDetail() {
   const f = state.files.find((x) => x.id === state.selFile);
   if (!f) {
-    $('detail').innerHTML = '<div class="detail-empty">Klikni na súbor pre detail.<br>Dvojklik ho otvorí.</div>';
+    $('detail').innerHTML = '<div class="detail-empty">Klikni na súbor pre detail.<br>Dvojklik ukáže súbor v strome.</div>';
     return;
   }
+  const link = f.target != null;
   const t = state.types[f.ftype] || state.types.OTH;
   $('detail').innerHTML = `
     <div class="preview" id="preview" title="Dvojklik otvorí súbor">
@@ -803,8 +904,9 @@ function renderDetail() {
     <dl class="d-meta">
       <dt>Zákazník</dt><dd>${esc(f.customer)}</dd>
       <dt>Zákazka</dt><dd>${esc(f.job)}${f.folder ? ' \\ ' + esc(f.folder) : ''}</dd>
+      ${link ? `<dt>Odkaz na</dt><dd class="mono d-link">${esc(f.target || 'cieľ sa nedá zistiť')}</dd>` : ''}
       ${state.similar ? `<dt>Podobnosť</dt><dd>${f.query ? 'hľadaný výkres' : `${simPct(f)} %`}</dd>` : ''}
-      <dt>Vlastník</dt><dd><strong>${esc(f.owner)}</strong></dd>
+      <dt>Vlastník</dt><dd><strong>${esc(ownerName(f.owner))}</strong></dd>
       <dt>Vytvorený</dt><dd>${fmtDate(f.created)}</dd>
       <dt>Zmenený</dt><dd>${fmtDate(f.modified)}</dd>
       <dt>Veľkosť</dt><dd>${fmtSize(f.size)}</dd>
@@ -812,7 +914,8 @@ function renderDetail() {
     <div class="d-btns">
       <button type="button" class="btn primary" id="btnOpen">Otvoriť</button>
       <button type="button" class="btn" id="btnFolder">Otvoriť priečinok</button>
-      ${multiJob() ? '<button type="button" class="btn" id="btnGoto" style="flex-basis:100%">Prejsť na zákazku</button>' : ''}
+      ${link && f.target ? '<button type="button" class="btn" id="btnLink" style="flex-basis:100%" title="Ukáže v strome zákazku, na ktorú odkaz ukazuje">Prejsť na cieľ odkazu</button>' : ''}
+      ${multiJob() ? '<button type="button" class="btn" id="btnGoto" style="flex-basis:100%">Ukázať v strome</button>' : ''}
       ${f.ftype === 'PDF' && !f.query ? `<button type="button" class="btn btn-icon" id="btnSimilar" style="flex-basis:100%" title="Nájde výkresy s podobnými pohľadmi v celom ${esc(state.meta.root)}">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1"></rect><rect x="13" y="13" width="8" height="8" rx="1"></rect><path d="M15 3h5a1 1 0 0 1 1 1v5M9 21H4a1 1 0 0 1-1-1v-5"></path></svg>
         Podobné výkresy</button>` : ''}
@@ -820,7 +923,8 @@ function renderDetail() {
   $('btnOpen').onclick = () => openFile(f.id);
   $('preview').ondblclick = () => openFile(f.id);
   $('btnFolder').onclick = () => openFolder(f.id);
-  if ($('btnGoto')) $('btnGoto').onclick = () => gotoJob(f.job_id, f.folder);
+  if ($('btnGoto')) $('btnGoto').onclick = () => revealFile(f, false);
+  if ($('btnLink')) $('btnLink').onclick = () => gotoLink(f);
   if ($('btnSimilar')) $('btnSimilar').onclick = () => startSimilar(f);
   loadThumb(f.id);
 }
@@ -946,10 +1050,16 @@ function bind() {
     const c = e.target.closest('.card');
     if (c) selectFile(Number(c.dataset.id));
   });
+  // dvojklik = ukázať v strome (otvoriť: tlačidlo Otvoriť, dvojklik na náhľad, Enter, pravé tlačidlo)
   $('gallery').addEventListener('dblclick', (e) => {
     const c = e.target.closest('.card');
-    if (c) openFile(Number(c.dataset.id));
+    const f = c && state.files.find((x) => x.id === Number(c.dataset.id));
+    if (f) revealFile(f);
   });
+  $('gallery').addEventListener('contextmenu', onFileContext);
+  $('rows').addEventListener('contextmenu', onFileContext);
+  $('tableWrap').addEventListener('scroll', hideCtx);
+  $('galleryWrap').addEventListener('scroll', hideCtx);
   $('galSort').addEventListener('change', () => {
     const [k, d] = $('galSort').value.split(':');
     state.sortKey = k;
@@ -968,8 +1078,10 @@ function bind() {
   });
   $('rows').addEventListener('dblclick', (e) => {
     const tr = e.target.closest('tr');
-    if (tr) openFile(Number(tr.dataset.id));
+    const f = tr && state.files.find((x) => x.id === Number(tr.dataset.id));
+    if (f) revealFile(f);
   });
+  document.querySelector('.files thead').addEventListener('contextmenu', onHeadContext);
   document.querySelector('.files thead').addEventListener('click', (e) => {
     const th = e.target.closest('th');
     if (!th || colDragged || e.target.closest('.col-grip')) return;
@@ -1067,29 +1179,62 @@ function bindResizers() {
 
 // --- ťahateľné stĺpce tabuľky ---------------------------------------------
 // Názov nemá pevnú šírku – vypĺňa voľné miesto; jeho ťahaním sa mení minimum.
-const COL_DEFAULTS = { ftype: 64, sim: 120, name: 300, folder: 200, owner: 100, created: 130, modified: 130, size: 84 };
+const COL_DEFAULTS = { ftype: 64, sim: 120, name: 300, folder: 200, owner: 100, created: 98, modified: 98, size: 70 };
 const COL_MIN = 40;
+// stĺpce, ktoré sa dajú skryť (pravé tlačidlo na hlavičke): kľúč -> [názov, CSS trieda buniek]
+const COL_HIDEABLE = {
+  ftype: ['Typ', 'c-type'], folder: ['Priečinok', 'c-folder'], owner: ['Vlastník', 'c-owner'],
+  created: ['Vytvorený', 'k-created'], modified: ['Zmenený', 'k-modified'], size: ['Veľkosť', 'c-size'],
+};
 let colW = { ...COL_DEFAULTS };
+let colHidden = new Set();
 let colDragged = false; // po ťahaní potlačiť klik = triedenie
 
 function applyCols() {
   let sum = 0;
   for (const th of document.querySelectorAll('.files th')) {
     const k = th.dataset.sort;
-    if (k !== 'sim' || state.similar) sum += colW[k];
+    if ((k !== 'sim' || state.similar) && !colHidden.has(k)) sum += colW[k];
     th.style.width = k === 'name' ? '' : `${colW[k]}px`;
   }
   document.querySelector('table.files').style.minWidth = `${sum}px`;
+  $('colHide').textContent = [...colHidden].map((k) => `.files .${COL_HIDEABLE[k][1]} { display: none; }`).join('\n');
 }
 
 function saveCols() {
-  try { localStorage.setItem('lupa.cols', JSON.stringify(colW)); } catch (e) { /* nevadí */ }
+  lsSet('lupa.cols.v2', JSON.stringify(colW));
+  lsSet('lupa.cols.hidden', JSON.stringify([...colHidden]));
+}
+
+// pravé tlačidlo na hlavičke tabuľky: zobraziť / skryť stĺpce
+function onHeadContext(e) {
+  e.preventDefault();
+  const items = [{ title: 'Stĺpce' }];
+  for (const [k, [label]] of Object.entries(COL_HIDEABLE)) {
+    items.push({ text: label, checked: !colHidden.has(k), action: () => {
+      colHidden.has(k) ? colHidden.delete(k) : colHidden.add(k);
+      applyCols();
+      saveCols();
+    } });
+  }
+  items.push('-', ['Predvolené stĺpce', () => {
+    colW = { ...COL_DEFAULTS };
+    colHidden = new Set();
+    applyCols();
+    saveCols();
+  }]);
+  showMenu(e, items);
 }
 
 function bindColumns() {
   try {
-    const saved = JSON.parse(localStorage.getItem('lupa.cols') || 'null');
+    // v1.3.2 užšie dátumy a veľkosť – zo starých uložených šírok (lupa.cols) sa tieto nepreberajú
+    const old = JSON.parse(lsGet('lupa.cols', 'null') || 'null');
+    const saved = JSON.parse(lsGet('lupa.cols.v2', 'null') || 'null');
     if (saved) colW = { ...COL_DEFAULTS, ...saved };
+    else if (old) colW = { ...COL_DEFAULTS, ...old, created: COL_DEFAULTS.created, modified: COL_DEFAULTS.modified, size: COL_DEFAULTS.size };
+    const hidden = JSON.parse(lsGet('lupa.cols.hidden', '[]') || '[]');
+    colHidden = new Set(hidden.filter((k) => k in COL_HIDEABLE));
   } catch (e) { /* nevadí */ }
 
   for (const th of document.querySelectorAll('.files th')) {
@@ -1148,11 +1293,10 @@ function ownerItems() {
 function renderOwnerList() {
   const items = ownerItems();
   ownerCur = Math.max(0, Math.min(ownerCur, items.length - 1));
-  const chk = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>';
   $('ownerList').innerHTML = items.length ? items.map((o, i) => {
     const sel = o.owner === state.owner;
     const row = `<button type="button" role="option" aria-selected="${sel}" class="dd-item${sel ? ' sel' : ''}${i === ownerCur ? ' cur' : ''}" data-i="${i}">
-      <span class="chk">${sel ? chk : ''}</span><span class="nm">${o.owner ? esc(o.owner) : 'Všetci'}</span>${o.n != null ? `<span class="cnt">${o.n.toLocaleString('sk-SK')}</span>` : ''}</button>`;
+      <span class="chk">${sel ? ICON_CHECK : ''}</span><span class="nm">${o.owner ? esc(ownerName(o.owner)) : 'Všetci'}</span>${o.n != null ? `<span class="cnt">${o.n.toLocaleString('sk-SK')}</span>` : ''}</button>`;
     return row + (!o.owner && items.length > 1 ? '<div class="dd-sep"></div>' : '');
   }).join('') : '<div class="dd-empty">Nikto taký nie je.</div>';
   const cur = $('ownerList').querySelector('.dd-item.cur');
@@ -1183,7 +1327,7 @@ function pickOwner(owner) {
   closeOwnerDrop();
   if (owner === state.owner) return;
   state.owner = owner;
-  $('ownerValue').textContent = owner || 'Všetci';
+  $('ownerValue').textContent = ownerName(owner) || 'Všetci';
   $('ownerChip').classList.toggle('active', !!owner);
   refresh();
 }
@@ -1227,15 +1371,75 @@ function renderStatus() {
     (c ? ` · ${num(c.customers)} zákazníkov · ${num(c.jobs)} zákaziek · ${num(c.files)} súborov` : '') +
     (c && c.pdfs ? ` · <span title="Výkresy (PDF) s odtlačkom pre Podobné výkresy – dopočítavajú sa postupne pri skenoch">odtlačky ${num(c.prints)} / ${num(c.pdfs)}</span>` : '');
   const s = m.last_scan;
+  const off = m.offline
+    ? `<span class="stale" title="Databáza ${esc(m.db)} nie je dostupná – Lupa ukazuje údaje z poslednej kópie v počítači">${esc(m.root)} nedostupný – údaje z lokálnej kópie</span> · `
+    : '';
   if (!m.db_ok) {
     $('stRight').innerHTML = '<span class="stale">Databáza neexistuje</span>';
   } else if (s) {
     const stale = Date.now() / 1000 - s.finished > m.stale_hours * 3600;
     const txt = `Posledný sken: ${fmtDate(s.finished)}${s.errors ? ` · chyby ${s.errors}` : ''}`;
-    $('stRight').innerHTML = stale
+    $('stRight').innerHTML = off + (stale
       ? `<span class="stale" title="Údaje môžu byť neaktuálne – sken neprebehol viac ako ${m.stale_hours} h">${esc(txt)}</span>`
-      : esc(txt);
+      : esc(txt));
+  } else {
+    $('stRight').innerHTML = off;
   }
+}
+
+// --- priebeh načítania pri štarte (pásik nad stavovým riadkom) --------------
+// Kopírovanie DB má skutočné percentá; ostatné kroky sú jeden dotaz, tam sa pásik
+// v rámci dielu kroku pomaly posúva, aby nestál.
+let loadTimer = null;
+
+function setBar(f) {
+  $('stProgressBar').style.width = `${(Math.min(1, f) * 100).toFixed(1)}%`;
+}
+
+function loadText(text) {
+  $('stLeft').innerHTML = `<span class="loading">${esc(text)}</span>`;
+}
+
+function loadStep(text, from, to) {
+  clearInterval(loadTimer);
+  $('stProgress').hidden = false;
+  $('stRight').textContent = '';
+  loadText(text);
+  let p = from;
+  setBar(p);
+  loadTimer = setInterval(() => { p += (to - p) * 0.1; setBar(p); }, 200);
+}
+
+function loadDone() {
+  clearInterval(loadTimer);
+  setBar(1);
+  setTimeout(() => { $('stProgress').hidden = true; setBar(0); }, 400);
+}
+
+// Lokálna kópia DB – kopíruje sa len po novom skene. Vráti podiel pásika, kde kopírovanie skončilo.
+async function prepareDb() {
+  const COPY = 0.7;   // kopírovanie = 70 % pásika (ak sa kopíruje)
+  loadStep('Kontrolujem databázu…', 0, 0.03);
+  let copied = false;
+  let done = false;
+  const poll = setInterval(async () => {
+    const p = await api.db_progress();
+    if (done || !p || !p.total) return;
+    if (!copied) { copied = true; clearInterval(loadTimer); }
+    const f = p.done / p.total;
+    const mb = (b) => Math.round(b / 1048576);
+    loadText(`Kopírujem databázu do počítača… ${Math.round(f * 100)} % (${mb(p.done)} / ${mb(p.total)} MB)`);
+    setBar(0.03 + f * (COPY - 0.03));
+  }, 150);
+  try {
+    const r = await api.prepare_db();
+    // aj krátke kopírovanie (medzi dvoma kontrolami priebehu) = kopírovalo sa
+    if (r.seconds >= 0.3) copied = true;
+  } finally {
+    done = true;
+    clearInterval(poll);
+  }
+  return copied ? COPY : 0.05;
 }
 
 function clearSearch() {
@@ -1259,6 +1463,9 @@ async function init() {
   try {
     await initApp();
   } catch (e) {
+    clearInterval(loadTimer);
+    $('stProgress').hidden = true;
+    $('stLeft').textContent = '';
     const msg = (e && (e.message || e.toString())) || 'neznáma chyba';
     $('empty').hidden = false;
     $('empty').textContent = `Lupa sa nepodarilo načítať: ${msg}`;
@@ -1268,6 +1475,10 @@ async function init() {
 
 async function initApp() {
   api = window.pywebview.api;
+  // pásik: b = koniec kopírovania, potom podľa merania meta ~15 %, vlastníci ~5 %, strom ~80 %
+  const b = await prepareDb();
+  const at = (f) => b + (1 - b) * f;
+  loadStep('Načítavam databázu…', at(0), at(0.15));
   const meta = await api.get_meta();
   state.meta = meta;
   meta.types.forEach((t, i) => { state.types[t.key] = { ...t, order: i }; });
@@ -1281,17 +1492,22 @@ async function initApp() {
   renderScope();
   setCardSize(Number(lsGet('lupa.card', 220)));
   setMode(lsGet('lupa.mode', 'list') === 'gallery' ? 'gallery' : 'list');
-  renderStatus();
   if (!meta.db_ok) {
+    loadDone();
+    renderStatus();
     $('empty').textContent = `Databáza sa nenašla: ${meta.db} – spusti najprv scanner.py.`;
     return;
   }
-  state.owners = await api.get_owners();
+  loadStep('Načítavam vlastníkov…', at(0.15), at(0.2));
+  await loadOwners();
+  loadStep('Načítavam strom zákaziek…', at(0.2), at(0.97));
   state.tree = await api.get_tree();
   if (state.tree.length === 1) state.openCust.add(state.tree[0].id);
   renderTree();
   renderHead();
   renderFiles();
+  loadDone();
+  renderStatus();
   $('q').focus();
 }
 

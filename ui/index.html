@@ -80,8 +80,8 @@
             <th data-sort="name" class="c-name">Názov</th>
             <th data-sort="folder" class="c-folder">Priečinok</th>
             <th data-sort="owner" class="c-owner">Vlastník</th>
-            <th data-sort="created" class="c-date">Vytvorený</th>
-            <th data-sort="modified" class="c-date">Zmenený</th>
+            <th data-sort="created" class="c-date k-created">Vytvorený</th>
+            <th data-sort="modified" class="c-date k-modified">Zmenený</th>
             <th data-sort="size" class="c-size">Veľkosť</th>
           </tr>
         </thead>
@@ -111,18 +111,20 @@
 
   <aside class="detail-pane" aria-label="Detail súboru">
     <div id="detail" class="detail">
-      <div class="detail-empty">Klikni na súbor pre detail.<br>Dvojklik ho otvorí.</div>
+      <div class="detail-empty">Klikni na súbor pre detail.<br>Dvojklik ukáže súbor v strome.</div>
     </div>
   </aside>
 </div>
 
 <footer class="statusbar">
+  <div class="st-progress" id="stProgress" hidden><div id="stProgressBar"></div></div>
   <span id="stLeft"></span>
   <span id="stRight"></span>
 </footer>
 
 <div class="toast" id="toast" role="alert" hidden></div>
 <div class="ctx" id="ctx" role="menu" hidden></div>
+<style id="colHide"></style>
 <div class="dropdown" id="ownerDrop" hidden>
   <div class="dd-search">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>

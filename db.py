@@ -42,7 +42,8 @@ CREATE TABLE IF NOT EXISTS files (
     size        INTEGER,
     created     REAL,
     modified    REAL,
-    owner       TEXT
+    owner       TEXT,
+    target      TEXT          -- cieľ odkazu .lnk ('' = nedá sa zistiť), inak NULL
 );
 
 CREATE TABLE IF NOT EXISTS scan_log (
@@ -71,6 +72,7 @@ CREATE INDEX IF NOT EXISTS ix_files_owner     ON files(owner);
 CREATE INDEX IF NOT EXISTS ix_files_ftype     ON files(ftype);
 CREATE INDEX IF NOT EXISTS ix_files_modified  ON files(modified);
 CREATE INDEX IF NOT EXISTS ix_files_job       ON files(job_id);
+CREATE INDEX IF NOT EXISTS ix_files_customer  ON files(customer_id);
 CREATE INDEX IF NOT EXISTS ix_files_position  ON files(position_id);
 """
 
@@ -82,6 +84,10 @@ def open_rw(path: Path) -> sqlite3.Connection:
     con.execute("PRAGMA foreign_keys = ON")
     # Žiadny WAL – DB bude neskôr na sieťovom disku, kde WAL nefunguje.
     con.executescript(SCHEMA)
+    # DB zo starších verzií – doplniť stĺpce (CREATE IF NOT EXISTS existujúcu tabuľku nemení)
+    if "target" not in {r[1] for r in con.execute("PRAGMA table_info(files)")}:
+        con.execute("ALTER TABLE files ADD COLUMN target TEXT")
+        con.commit()
     return con
 
 

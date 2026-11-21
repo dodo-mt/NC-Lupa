@@ -14,12 +14,14 @@ import logging.handlers
 import msvcrt
 import os
 import shutil
+import sqlite3
 import sys
 import time
 from pathlib import Path
 
 import config
 import db
+import lnk
 
 try:
     import win32security
@@ -110,6 +112,17 @@ def is_dir(entry: os.DirEntry) -> bool:
         return False
 
 
+def unc_of(root: str) -> str | None:
+    """'L:\\' na sieťovom disku -> '\\\\server\\share' (inak None)."""
+    if len(root) < 2 or root[1] != ":":
+        return None
+    try:
+        import win32wnet
+        return win32wnet.WNetGetConnection(root[:2]).rstrip("\\")
+    except Exception:  # lokálny disk / pywin32 chýba
+        return None
+
+
 class ScanError(Exception):
     """Sken sa nedá vykonať (napr. koreň nie je dostupný)."""
 
@@ -125,6 +138,7 @@ class Scanner:
         self.only = only
         self.recent_cutoff = time.time() - recent_days * 86400
         self.owners = OwnerResolver()
+        self.root_unc = unc_of(self.root)   # \\server\share koreňa – odkazy .lnk môžu mať UNC cestu
         self.progress = progress  # callback(i, n, názov zákazníka) – pre ikonu pri hodinách
         self.files_seen = 0
         self.errors = 0
@@ -159,6 +173,14 @@ class Scanner:
         fixed = self.fix_types()
         if fixed:
             log.info("Typ súboru opravený podľa config.py: %d súborov", fixed)
+            self.changed = True
+        dropped = self.drop_ignored()
+        if dropped:
+            log.info("Zmazané súbory, ktoré sa podľa config.py preskakujú: %d", dropped)
+            self.changed = True
+        linked = self.fill_link_targets()
+        if linked:
+            log.info("Doplnené ciele odkazov .lnk: %d", linked)
             self.changed = True
 
         known = {row[0]: row[1] for row in self.con.execute("SELECT path, id FROM customers")}
@@ -239,6 +261,44 @@ class Scanner:
                                       (want, ext, ftype)).rowcount
         self.con.commit()
         return n
+
+    def drop_ignored(self) -> int:
+        """Zmaže z DB súbory, ktoré sa podľa aktuálnych pravidiel (config.is_ignored) preskakujú –
+        napr. po pridaní ignorovanej prípony; netreba čakať na nový sken zákazky.
+        Jeden SQL dotaz (LIKE nerozlišuje veľké/malé písmená ako is_ignored), vzory s [ ] cez Python."""
+        like, slow = [], []
+        for g in config.IGNORE_GLOBS:
+            if "[" in g:
+                slow.append(g)
+            else:
+                like.append(g.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+                            .replace("*", "%").replace("?", "_"))
+        exts, names = sorted(config.IGNORE_EXTS), sorted(config.IGNORE_FILES)
+        where = [f"ext IN ({','.join('?' * len(exts))})", f"lower(name) IN ({','.join('?' * len(names))})"]
+        where += ["name LIKE ? ESCAPE '!'"] * len(like)
+        n = self.con.execute("DELETE FROM files WHERE " + " OR ".join(where), [*exts, *names, *like]).rowcount
+        if slow:
+            ids = [(r[0],) for r in self.con.execute("SELECT id, name FROM files")
+                   if any(fnmatch.fnmatchcase(r[1].lower(), g) for g in slow)]
+            n += self.con.executemany("DELETE FROM files WHERE id = ?", ids).rowcount
+        self.con.commit()
+        return n
+
+    def link_target(self, long_path: str) -> str:
+        """Cieľ odkazu .lnk ako cesta pod koreňom (UNC koreňa -> L:\\); '' = nedá sa zistiť."""
+        t = lnk.target(long_path) or ""
+        if t and self.root_unc and t.lower().startswith(self.root_unc.lower() + "\\"):
+            t = os.path.join(self.root, t[len(self.root_unc) + 1:])
+        return t
+
+    def fill_link_targets(self) -> int:
+        """Odkazy .lnk bez zisteného cieľa (DB zo staršej verzie, nezmenené zákazky sa neprepisujú).
+        Číta len samotné .lnk (malé súbory), raz – nezistiteľný cieľ sa uloží ako ''."""
+        rows = self.con.execute("SELECT id, path FROM files WHERE ext = 'lnk' AND target IS NULL").fetchall()
+        for fid, path in rows:
+            self.con.execute("UPDATE files SET target = ? WHERE id = ?", (self.link_target(to_long(path)), fid))
+        self.con.commit()
+        return len(rows)
 
     def is_customer(self, name: str) -> bool:
         low = name.lower()
@@ -322,9 +382,7 @@ class Scanner:
                         subdirs.append((entry.path, f"{rel}\\{name}" if rel else name))
                     continue
                 ext, ver = split_ext(name)
-                low = name.lower()
-                if (low in config.IGNORE_FILES or ext in config.IGNORE_EXTS
-                        or any(fnmatch.fnmatchcase(low, g) for g in config.IGNORE_GLOBS)):
+                if config.is_ignored(name, ext):
                     continue
                 cands.append((entry, ext, ver))
 
@@ -344,10 +402,10 @@ class Scanner:
 
         # porovnanie s DB: priečinky + (priečinok, názov, veľkosť, zmenený)
         old_dirs = {r[0] for r in self.con.execute("SELECT rel_path FROM positions WHERE job_id=?", (jid,))}
-        old_files = {
-            (r[0], r[1], r[2], r[3]): r[4]
+        old_files = {   # kľúč -> (vlastník, cieľ odkazu) – pri nezmenenom súbore sa prevezmú
+            (r[0], r[1], r[2], r[3]): (r[4], r[5])
             for r in self.con.execute(
-                "SELECT p.rel_path, f.name, f.size, f.modified, f.owner FROM files f"
+                "SELECT p.rel_path, f.name, f.size, f.modified, f.owner, f.target FROM files f"
                 " JOIN positions p ON p.id = f.position_id WHERE f.job_id=?", (jid,))
         }
         new_keys = {(rel, e.name, st.st_size, st.st_mtime) for rel, e, _x, st in found}
@@ -366,14 +424,18 @@ class Scanner:
                 ).lastrowid
             rows = []
             for rel, e, ext, st in found:
-                owner = old_files.get((rel, e.name, st.st_size, st.st_mtime)) or self.owners.get(e.path)
+                old_owner, old_target = old_files.get((rel, e.name, st.st_size, st.st_mtime), (None, None))
+                owner = old_owner or self.owners.get(e.path)
+                target = None
+                if ext == "lnk":
+                    target = old_target if old_target is not None else self.link_target(e.path)
                 rows.append((
                     pids[rel], jid, cid, e.name, ext, config.ftype_for_ext(ext), to_short(e.path),
-                    st.st_size, getattr(st, "st_birthtime", st.st_ctime), st.st_mtime, owner,
+                    st.st_size, getattr(st, "st_birthtime", st.st_ctime), st.st_mtime, owner, target,
                 ))
             self.con.executemany(
                 "INSERT INTO files(position_id, job_id, customer_id, name, ext, ftype, path,"
-                " size, created, modified, owner) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                " size, created, modified, owner, target) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 rows,
             )
             self.jobs_changed += 1
@@ -601,6 +663,8 @@ def run_scan(root: str, db_path: Path, full=False, auto=False, only=None,
             except Exception:  # odtlačky nesmú pokaziť sken súborov
                 log.exception("Odtlačky výkresov zlyhali")
                 con.rollback()
+            if full and vacuum(con):
+                pending.touch()
         finally:
             con.close()
         res.update(jobs=sc.jobs_scanned + sc.jobs_skipped, changed=sc.jobs_changed,
@@ -630,6 +694,27 @@ def run_scan(root: str, db_path: Path, full=False, auto=False, only=None,
         lock.release()
         res["seconds"] = time.time() - t0
     return res
+
+
+def vacuum(con) -> bool:
+    """Po úplnom skene zmenší DB, ak je v nej veľa voľného miesta po zmazaných dátach
+    (SQLite súbor sám nezmenšuje). DB sa kopíruje do každého PC – čím menšia, tým lepšie.
+    Beží nad lokálnou pracovnou kópiou, trvá pár sekúnd."""
+    try:
+        con.commit()
+        free = con.execute("PRAGMA freelist_count").fetchone()[0]
+        total = con.execute("PRAGMA page_count").fetchone()[0]
+        size = con.execute("PRAGMA page_size").fetchone()[0]
+        if not total or free < total * 0.05:
+            return False
+        t = time.time()
+        con.execute("VACUUM")
+        log.info("DB zmenšená (VACUUM): %.0f → %.0f MB za %.1f s", total * size / 2**20,
+                 (total - free) * size / 2**20, time.time() - t)
+        return True
+    except sqlite3.Error as e:
+        log.error("VACUUM zlyhal: %s", e)
+        return False
 
 
 def norm_root(root: str) -> str:

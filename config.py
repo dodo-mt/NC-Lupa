@@ -3,6 +3,7 @@
 Hodnoty ciest sa čítajú z lupa.ini (vedľa programu), inak platia predvolené.
 """
 import configparser
+import fnmatch
 import os
 import sys
 from pathlib import Path
@@ -10,8 +11,12 @@ from pathlib import Path
 # Verzia aplikácie – zvyšovať pri každom vydaní (zobrazuje sa v UI, ikone skenu, logu a vo vlastnostiach exe)
 VERSION = "1.3.1"
 
-# Priečinok programu (pri PyInstaller exe = priečinok s exe)
-if getattr(sys, "frozen", False):
+# Priečinok programu (pri PyInstaller exe = priečinok s exe). Lupa beží z lokálnej kópie
+# v %LOCALAPPDATA% (launcher.py) – spúšťač jej v LUPA_HOME odovzdá svoj priečinok (L:\_Lupa),
+# kde je lupa.ini a lupa.db.
+if os.environ.get("LUPA_HOME"):
+    APP_DIR = Path(os.environ["LUPA_HOME"])
+elif getattr(sys, "frozen", False):
     APP_DIR = Path(sys.executable).resolve().parent
 else:
     APP_DIR = Path(__file__).resolve().parent
@@ -87,22 +92,23 @@ FULL_EVERY_DAYS = 7  # scanner --auto: úplný sken, ak posledný bol pred viac 
 # ---------------------------------------------------------------------------
 FILE_TYPES = {
     "PDF": ("Výkres", ["pdf"], "#fee2e2", "#7f1d1d"),
-    "STP": ("Model", ["stp", "step"], "#dbeafe", "#1e3a8a"),
+    "MODEL": ("3D model", ["stp", "step", "igs", "iges", "x_t", "x_b", "stl"], "#dbeafe", "#1e3a8a"),
     "HMC": ("hyperMILL", ["hmc"], "#ffedd5", "#7c2d12"),
     "PPF": ("hyperMILL", ["ppf"], "#fef3c7", "#78350f"),
-    "NC": ("NC program", ["h", "nc", "mpf", "spf"], "#dcfce7", "#14532d"),
-    "XLS": ("Excel", ["xlsx", "xls"], "#ccfbf1", "#134e4a"),
+    "NC": ("NC program", ["h", "nc", "mpf", "spf", "wpd", "eia", "nd1", "nd2", "arc"], "#dcfce7", "#14532d"),
+    "XLS": ("Excel – CNC listy", ["xlsx", "xlsm", "xls"], "#ccfbf1", "#134e4a"),
     "DOC": ("Word", ["doc", "docx"], "#e0e7ff", "#312e81"),
     "CREO": ("Creo", ["prt", "drw", "asm"], "#f9ded3", "#8a3517"),
     "DWG": ("AutoCAD", ["dwg", "dxf"], "#ede9fe", "#4c1d95"),
-    "STL": ("Sieťový model", ["stl"], "#e0f2fe", "#0c4a6e"),
-    "TIF": ("Obrázok / sken", ["tif", "tiff"], "#fce7f3", "#831843"),
+    "OBR": ("Obrázok / sken", ["tif", "tiff", "jpg", "jpeg", "png", "bmp", "gif", "webp", "heic"],
+            "#fce7f3", "#831843"),
     "TXT": ("Poznámky", ["txt"], "#ecfccb", "#365314"),
+    "MAIL": ("E-mail", ["msg", "eml"], "#fae8ff", "#86198f"),
 }
 
 # Kontrola úplnosti zákazky: (názov, typy, prípony) – stačí ktorýkoľvek typ alebo prípona
 COMPLETENESS = [
-    ("Model", ["STP", "CREO"], ["catpart"]),
+    ("Model", ["MODEL", "CREO"], ["catpart"]),
     ("PDF", ["PDF"], []),
     ("CAM", ["HMC", "PPF"], []),
     ("NC", ["NC"], []),
@@ -139,7 +145,14 @@ IGNORE_DIRS = {"pof", "vnc", "stock", "3df"}
 IGNORE_ROOT_DIRS = {"_lupa", "$recycle.bin", "system volume information"}
 # Konkrétne názvy súborov
 IGNORE_FILES = {"thumbs.db", "desktop.ini"}
-# Prípony súborov
-IGNORE_EXTS = {"bak", "hmc_bak", "hypermill", "dwl", "dwl2", "log", "tmp", "out"}
-# Vzory názvov (fnmatch, malými písmenami) – logy z exportu Creo a pod.
-IGNORE_GLOBS = ["*.log.*", "*_log.xml"]
+# Prípony súborov (dep = Heidenhain PROG.H.T.DEP, err/out = std.err/std.out)
+IGNORE_EXTS = {"bak", "hmc_bak", "hypermill", "dwl", "dwl2", "log", "tmp", "out", "err", "dep"}
+# Vzory názvov (fnmatch, malými písmenami) – logy z exportu Creo, trail a sekcie Creo (s2d0001.sec.1)
+IGNORE_GLOBS = ["*.log.*", "*_log.xml", "trail.txt*", "*.sec", "*.sec.*"]
+
+
+def is_ignored(name: str, ext: str) -> bool:
+    """Súbor, ktorý skener preskakuje (aj upratovanie DB po zmene týchto pravidiel)."""
+    low = name.lower()
+    return (low in IGNORE_FILES or ext in IGNORE_EXTS
+            or any(fnmatch.fnmatchcase(low, g) for g in IGNORE_GLOBS))

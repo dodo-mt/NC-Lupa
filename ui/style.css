@@ -125,6 +125,23 @@ button { font-family: inherit; cursor: pointer; }
 }
 .statusbar .mono { font-size: 11px; }
 .statusbar .stale { color: #d97706; }
+.statusbar { position: relative; }
+.statusbar .loading { color: var(--accent, #1d4ed8); }
+/* priebeh načítania pri štarte – tenký pásik na hornom okraji stavového riadku */
+.st-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -1px;
+  height: 3px;
+  background: #dbeafe;
+}
+.st-progress > div {
+  height: 100%;
+  width: 0;
+  background: #1d4ed8;
+  transition: width 0.2s ease-out;
+}
 .fgroup { display: flex; align-items: center; gap: 8px; }
 .flabel {
   font-size: 12px;
@@ -283,6 +300,7 @@ select {
 }
 .ctx button:hover { background: var(--accent-soft); color: #1e3a8a; }
 .ctx hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
+.ctx .ctx-chk { display: inline-flex; width: 18px; vertical-align: -2px; color: var(--accent); }
 .ctx .ctx-title { padding: 4px 10px 6px; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 280px; }
 mark { background: #fef08a; color: inherit; border-radius: 2px; }
 
@@ -487,8 +505,11 @@ table.files { width: 100%; min-width: 1000px; border-collapse: collapse; table-l
 .c-name { width: auto; }
 .c-folder { width: 200px; }
 .c-owner { width: 100px; }
-.c-date { width: 130px; }
-.c-size { width: 84px; text-align: right; }
+.c-date { width: 98px; }
+.c-size { width: 70px; text-align: right; }
+/* odkaz .lnk: cieľ za názvom */
+.lnk-to { margin-left: 8px; font-size: 12px; color: var(--accent); }
+.d-link { font-size: 12px; word-break: break-all; }
 td.c-size { text-align: right; }
 td.c-name { font-family: var(--mono); font-size: 13px; }
 td.c-folder { font-family: var(--mono); font-size: 12px; color: var(--muted); }

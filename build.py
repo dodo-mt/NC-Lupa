@@ -6,6 +6,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pymupdf
@@ -80,12 +81,15 @@ def version_file(name: str, desc: str) -> Path:
     return path
 
 
-def pyinstaller(script: str, name: str, desc: str, extra: list[str]):
+def pyinstaller(script: str, name: str, desc: str, extra: list[str],
+                onedir: bool = False, dist: Path = OUT, tag: str | None = None):
+    """tag = meno pracovného priečinka (Lupa aj spúšťač sa volajú Lupa.exe)."""
+    tag = tag or name
     cmd = [
         sys.executable, "-m", "PyInstaller", script,
-        "--name", name, "--onefile", "--noconsole", "--noconfirm", "--clean",
+        "--name", name, "--onedir" if onedir else "--onefile", "--noconsole", "--noconfirm", "--clean",
         "--icon", str(ICON), "--version-file", str(version_file(name, desc)),
-        "--distpath", str(OUT), "--workpath", str(BUILD / name), "--specpath", str(BUILD),
+        "--distpath", str(dist), "--workpath", str(BUILD / tag), "--specpath", str(BUILD / tag),
         "--exclude-module", "tkinter",
         *extra,
     ]
@@ -100,9 +104,19 @@ def make_icons():
 
 def main():
     shutil.rmtree(OUT, ignore_errors=True)  # žiadne zvyšky starých verzií
+    OUT.mkdir(parents=True)
     make_icons()
     print(f"Lupa v{config.VERSION}")
-    pyinstaller("app.py", "Lupa", "Lupa – prehliadač zákaziek", ["--add-data", f"{ROOT / 'ui'};ui"])
+    # Lupa = onedir v app\ (štartuje rýchlo, ale zo siete nejde – spúšťa sa z lokálnej kópie),
+    # Lupa.exe = spúšťač, ktorý app\ skopíruje do %LOCALAPPDATA% a spustí (launcher.py)
+    pyinstaller("app.py", "Lupa", "Lupa – prehliadač zákaziek", ["--add-data", f"{ROOT / 'ui'};ui"],
+                onedir=True, dist=BUILD / "onedir", tag="Lupa-app")
+    shutil.move(BUILD / "onedir" / "Lupa", OUT / "app")
+    stamp = f"{config.VERSION}+{time.strftime('%Y%m%d-%H%M%S')}"  # aj zostavenie bez novej verzie sa prenesie
+    (OUT / "app" / "version.txt").write_text(stamp, encoding="utf-8")
+    pyinstaller("launcher.py", "Lupa", "Lupa – prehliadač zákaziek", [
+        "--exclude-module", "webview", "--exclude-module", "numpy", "--exclude-module", "pymupdf",
+    ], tag="Lupa-spustac")
     pyinstaller("scanner.py", "lupa-sken", "Lupa – sken zákaziek", [
         "--add-data", f"{ASSETS};assets",
         "--exclude-module", "webview",
@@ -113,7 +127,8 @@ def main():
     shutil.copy2(ROOT / "lupa.ini.example", OUT / "lupa.ini.example")
     print(f"\nHotovo: {OUT}")
     for p in sorted(OUT.iterdir()):
-        print(f"  {p.name:22} {p.stat().st_size / 1024 / 1024:6.1f} MB")
+        size = sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) if p.is_dir() else p.stat().st_size
+        print(f"  {p.name + ('\\' if p.is_dir() else ''):22} {size / 1024 / 1024:6.1f} MB")
 
 
 if __name__ == "__main__":

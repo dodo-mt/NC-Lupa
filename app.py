@@ -10,12 +10,14 @@ import sqlite3
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 import webview
 
 import config
 import db
+import dbcopy
 import thumbs
 import winstate
 
@@ -53,23 +55,46 @@ class Api:
     """
 
     def __init__(self, db_path: Path):
-        self._db_path = db_path
+        self._db_path = db_path           # DB na sieti (L:\_Lupa\lupa.db) – len sa z nej kopíruje
+        self._copy = dbcopy.LocalCopy(db_path)
         self._idx = None                  # (značka DB, ViewIndex, cesty) – podobné výkresy
         self._idx_lock = threading.Lock()
+        self._cols = (None, "")           # (kópia DB, stĺpce súborov) – stará DB nemá files.target
+
+    def _file_cols(self) -> str:
+        """Stĺpce súborov pre UI; files.target (cieľ .lnk) má len DB od skenera 1.3.2."""
+        path = self._copy.path()
+        if self._cols[0] != path:
+            has = any(r["name"] == "target" for r in self._q("PRAGMA table_info(files)"))
+            self._cols = (path, FILE_COLS + (", f.target" if has else ", NULL AS target"))
+        return self._cols[1]
 
     def _q(self, sql: str, args=()) -> list[dict]:
-        # Spojenie len na dobu dotazu – Lupa nedrží súbor DB otvorený, aby ho skener
-        # mohol na zdieľanom disku vymeniť za novú verziu.
-        if not self._db_path.exists():
+        # Dotazy idú do lokálnej kópie (dbcopy) – cez sieť je SQLite ~40× pomalšie.
+        # Spojenie len na dobu dotazu, aby sa stará kópia dala po obnovení zmazať.
+        path = self._copy.path()
+        if not path:
             return []
         try:
-            con = db.open_ro(self._db_path)
+            con = db.open_ro(path)
         except sqlite3.Error as e:  # do UI s cestou, aby bolo jasné, čo sa nedá otvoriť
-            raise RuntimeError(f"databáza {self._db_path} sa nedá otvoriť ({e})") from e
+            raise RuntimeError(f"databáza {path} sa nedá otvoriť ({e})") from e
         try:
             return [dict(r) for r in con.execute(sql, args)]
         finally:
             con.close()
+
+    # --- lokálna kópia DB (štart) ------------------------------------------
+    def prepare_db(self) -> dict:
+        """Pri štarte: skopíruje DB zo siete, ak sa zmenila. Priebeh cez db_progress()."""
+        t = time.perf_counter()
+        path = self._copy.prepare()
+        return {"ok": path is not None, "offline": self._copy.offline,
+                "seconds": round(time.perf_counter() - t, 1)}
+
+    def db_progress(self) -> dict | None:
+        p = self._copy.progress
+        return {"done": p[0], "total": p[1]} if p else None
 
     # --- údaje pre UI ------------------------------------------------------
     def get_meta(self) -> dict:
@@ -103,7 +128,8 @@ class Api:
             "completeness": [n for n, _t, _e in config.COMPLETENESS],
             "root": str(config.ROOT),
             "db": str(self._db_path),
-            "db_ok": self._db_path.exists(),
+            "db_ok": self._copy.current is not None,
+            "offline": self._copy.offline,     # L:\ nedostupný – údaje z poslednej lokálnej kópie
             "types": types,
             "last_scan": last[0] if last else None,
             "counts": counts[0] if counts else None,
@@ -165,10 +191,61 @@ class Api:
         )
         return rows[0] if rows else None
 
-    def get_owners(self) -> list[dict]:
+    def get_owners(self, params: dict | None = None) -> list[dict]:
+        """Vlastníci s počtom súborov – vo vybranej zákazke / u zákazníka, inak v celom koreni."""
+        p = params or {}
+        where, args = "", ()
+        if p.get("job_id"):
+            where, args = " WHERE job_id = ?", (p["job_id"],)
+        elif p.get("customer_id"):
+            where, args = " WHERE customer_id = ?", (p["customer_id"],)
         return self._q(
-            "SELECT owner, COUNT(*) AS n FROM files GROUP BY owner ORDER BY owner COLLATE NOCASE"
+            f"SELECT owner, COUNT(*) AS n FROM files{where} GROUP BY owner ORDER BY owner COLLATE NOCASE", args
         )
+
+    def locate(self, path: str) -> dict:
+        """Kde je cesta (cieľ odkazu .lnk) v strome: súbor, priečinok zákazky alebo zákazník.
+        Ak cesta v DB nie je (napr. preskakovaný súbor), berie sa najbližší nadradený priečinok.
+
+        Vracia {'ok', 'job_id', 'rel', 'file_id', 'cust_id', 'exact'} alebo {'ok': False, 'error'}.
+        """
+        if not path:
+            return {"ok": False, "error": "Cieľ odkazu sa nepodarilo zistiť."}
+        f = self._q("SELECT f.id, f.job_id, p.rel_path FROM files f JOIN positions p ON p.id = f.position_id"
+                    " WHERE f.path = ? COLLATE NOCASE LIMIT 1", (path,))
+        if f:
+            return {"ok": True, "job_id": f[0]["job_id"], "rel": f[0]["rel_path"], "file_id": f[0]["id"],
+                    "exact": True}
+        cur = path.rstrip("\\")
+        while cur:
+            pos = self._q("SELECT job_id, rel_path FROM positions WHERE path = ? COLLATE NOCASE LIMIT 1", (cur,))
+            if pos:
+                return {"ok": True, "job_id": pos[0]["job_id"], "rel": pos[0]["rel_path"], "file_id": None,
+                        "exact": cur == path.rstrip("\\")}
+            c = self._q("SELECT id FROM customers WHERE path = ? COLLATE NOCASE LIMIT 1", (cur,))
+            if c:
+                return {"ok": True, "cust_id": c[0]["id"], "exact": cur == path.rstrip("\\")}
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                break
+            cur = parent
+        if not os.path.exists(path):
+            return {"ok": False, "error": f"Cieľ odkazu neexistuje:\n{path}"}
+        return {"ok": False, "error": f"Cieľ odkazu nie je v Lupe (mimo zákaziek):\n{path}"}
+
+    def copy_text(self, text: str) -> dict:
+        """Do schránky Windows (clipboard API prehliadača v okne nemusí byť povolené)."""
+        try:
+            import win32clipboard
+            win32clipboard.OpenClipboard()
+            try:
+                win32clipboard.EmptyClipboard()
+                win32clipboard.SetClipboardText(text, win32clipboard.CF_UNICODETEXT)
+            finally:
+                win32clipboard.CloseClipboard()
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": f"Kopírovanie zlyhalo: {e}"}
 
     def search(self, params: dict) -> dict:
         """Hľadanie + filtre.
@@ -216,7 +293,7 @@ class Api:
         )
         total = self._q("SELECT COUNT(*) AS n" + base, args)
         rows = self._q(
-            f"SELECT {FILE_COLS}, f.job_id, j.name AS job, c.name AS customer"
+            f"SELECT {self._file_cols()}, f.job_id, j.name AS job, c.name AS customer"
             + base + " ORDER BY f.modified DESC LIMIT ?",
             args + [SEARCH_LIMIT],
         )
@@ -226,8 +303,7 @@ class Api:
     def _prints_index(self):
         """Index odtlačkov (odtlacky.ViewIndex, cesty) – v pamäti, znova sa načíta po výmene DB."""
         import odtlacky
-        st = self._db_path.stat()
-        stamp = (st.st_mtime_ns, st.st_size, odtlacky.VERSION)
+        stamp = (self._copy.path(), odtlacky.VERSION)  # meno kópie sa mení s každou verziou DB
         with self._idx_lock:
             if self._idx and self._idx[0] == stamp:
                 return self._idx[1], self._idx[2]
@@ -244,7 +320,7 @@ class Api:
         Vracia {'ok', 'rows' (s 'sim' 0..1), 'indexed' (počet výkresov s odtlačkom)} alebo {'ok': False, 'error'}.
         """
         import odtlacky
-        if not self._db_path.exists():
+        if not self._copy.path():
             return {"ok": False, "error": "Databáza neexistuje."}
         me = self._q("SELECT path, ftype FROM files WHERE id = ?", (file_id,))
         if not me or me[0]["ftype"] != "PDF":
@@ -273,7 +349,7 @@ class Api:
         for a in range(0, len(keys), 500):   # SQLite má limit počtu parametrov
             part = keys[a:a + 500]
             rows += self._q(
-                f"SELECT {FILE_COLS}, f.job_id, j.name AS job, c.name AS customer"
+                f"SELECT {self._file_cols()}, f.job_id, j.name AS job, c.name AS customer"
                 " FROM files f JOIN positions p ON p.id = f.position_id"
                 " JOIN jobs j ON j.id = f.job_id JOIN customers c ON c.id = f.customer_id"
                 f" WHERE f.path IN ({','.join('?' * len(part))})", part)

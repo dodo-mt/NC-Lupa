@@ -21,8 +21,10 @@ L:\<Zákazník>\<Zákazka>\[voliteľne 1+ medziúrovne: pozícia / číslo / tex
   → **pozícia = skutočný priečinok** v zákazke (tabuľka `positions`, koreň zákazky má `rel_path = ''`).
   Žiadne hádanie, čo je „pozícia“; strom ukazuje reálne podpriečinky. Klik na zákazku ukáže všetky jej súbory.
 - **Skener preskakuje** (zoznamy v `config.py`): priečinky `POF\`, `VNC\`, `STOCK\`, `3DF\` (interné dáta hyperMILL),
-  súbory `Thumbs.db`, `desktop.ini`, prípony `.bak .hmc_bak .hyperMILL .dwl .dwl2 .log .tmp .out`,
-  vzory `*.log.*` a `*_log.xml` (logy z exportu Creo).
+  súbory `Thumbs.db`, `desktop.ini`, prípony `.bak .hmc_bak .hyperMILL .dwl .dwl2 .log .tmp .out .err .dep`
+  (`.H.T.DEP` Heidenhain, `std.err/out`), vzory `*.log.*` a `*_log.xml` (logy z exportu Creo),
+  `trail.txt*`, `*.sec`, `*.sec.*` (Creo). Pravidlo = `config.is_ignored`; po jeho zmene skener
+  pri ďalšom skene zmaže takéto súbory z DB (`drop_ignored`).
 - Staré značenie: zákazník môže byť aj v starom tvare (napr. `OD067` = dnešný `100020`) a zákazky v ňom
   majú čísla ako `009712`. Lupa ich berie bežne ako zákazník → zákazka.
 - NC programy bývajú v podpriečinku `NC\` (triedené po strojoch: eVo 80, monoBLOCK H640, DMC 160, monoBLOCK 840D).
@@ -33,18 +35,21 @@ L:\<Zákazník>\<Zákazka>\[voliteľne 1+ medziúrovne: pozícia / číslo / tex
 | Typ | Prípony | Farba (pozadie / text) |
 |-----|---------|------------------------|
 | PDF – výkres | .pdf | #fee2e2 / #7f1d1d |
-| STP – model | .stp .step | #dbeafe / #1e3a8a |
+| MODEL – 3D model | .stp .step .igs .iges .x_t .x_b .stl | #dbeafe / #1e3a8a |
 | HMC – hyperMILL | .hmc | #ffedd5 / #7c2d12 |
 | PPF – hyperMILL | .ppf | #fef3c7 / #78350f |
-| NC – programy | .h .nc .mpf .spf | #dcfce7 / #14532d |
-| XLS – Excel (listy) | .xlsx .xls | #ccfbf1 / #134e4a |
+| NC – programy | .h .nc .mpf .spf .wpd .eia .nd1 .nd2 .arc | #dcfce7 / #14532d |
+| XLS – Excel (CNC listy) | .xlsx .xlsm .xls (všetky Excely – väčšinou CNC listy) | #ccfbf1 / #134e4a |
 | DOC – Word | .doc .docx | #e0e7ff / #312e81 |
 | CREO – Creo | .prt.N .drw.N .asm.N (N = verzia, berie sa len najvyššia v priečinku) | #f9ded3 / #8a3517 |
 | DWG – AutoCAD | .dwg .dxf | #ede9fe / #4c1d95 |
-| STL – sieťový model | .stl | #e0f2fe / #0c4a6e |
-| TIF – obrázok / sken | .tif .tiff | #fce7f3 / #831843 |
+| OBR – obrázok / sken | .tif .tiff .jpg .jpeg .png .bmp .gif .webp .heic | #fce7f3 / #831843 |
 | TXT – poznámky | .txt (náhľad ako text) | #ecfccb / #365314 |
+| MAIL – e-mail | .msg .eml | #fae8ff / #86198f |
 | Ostatné | * | #f3f4f6 / #374151 |
+
+Málo štítkov je zámer (jeden riadok filtrov) – nové prípony radšej do existujúcej skupiny.
+Zmena mapovania sa do DB prenesie pri ďalšom skene (`fix_types`), netreba úplný sken.
 
 Mapovanie drž na jednom mieste (`config.py`), aby sa dalo ľahko rozšíriť.
 
@@ -62,19 +67,30 @@ Mapovanie drž na jednom mieste (`config.py`), aby sa dalo ľahko rozšíriť.
     naraz (`os.replace`, opakuje pri obsadení) – len keď sa niečo zmenilo (značka `.pending`).
     Pri nezmenenej zákazke sa nič neprepisuje a vlastník sa preberá z DB (GetFileSecurity cez sieť je pomalé).
   - `--auto` = inkrementálny, raz za 7 dní úplný (pre Plánovač úloh). Zámok – súbežne beží len jeden sken.
+  - Zmazanie / premenovanie hlboko v starej zákazke nezmení `mtime` zákazky → v DB do týždenného úplného
+    skenu. Po úplnom skene `VACUUM`, ak je v DB >5 % voľného miesta (DB sa kopíruje do každého PC).
   - **Odtlačky výkresov** (`odtlacky.py`, tabuľka `prints`, kľúč = cesta + veľkosť + mtime + `odtlacky.VERSION`):
     po skene súborov sa dopočítajú chýbajúce (najnovšie PDF prvé), najviac `prints_minutes` min na sken
     (`lupa.ini`, 0 = vypnuté) – prvý prechod L:\ sa rozloží do viacerých skenov. Pri zmene algoritmu zvýš `VERSION`.
 - Aplikácia otvára DB **len na dobu dotazu** (nedrží súbor), aby ho skener mohol vymeniť.
+  - **Lokálna kópia DB** (`dbcopy.py`): Lupa číta z `%LOCALAPPDATA%\Lupa\db\lupa-<hash>-<veľkosť>-<mtime>.db`,
+    nie cez sieť (SQLite cez SMB: štart 16 s, lokálne 0,4 s; kópia 246 MB ~1–3 s). Pri štarte sa kopíruje
+    hneď (pásik v stavovom riadku s %), počas behu na pozadí (kontrola zdroja raz za 10 s).
+    L:\ nedostupný → posledná kópia + upozornenie v stavovom riadku. Staré kópie sa mažú.
   - Spúšťanie z príkazového riadka (neskôr cez Plánovač úloh): `python scanner.py --root L:\ --db <cesta> [--full] [--only "Zákazník"]`.
 - **Aplikácia** (`app.py`): **pywebview** okno s HTML/CSS/JS rozhraním (nie prehliadač, nie server).
   - Python strana vystavuje API cez `js_api` (hľadanie, filtre, strom, otvorenie súboru).
   - Dvojklik na súbor → `os.startfile(cesta)` (otvorí v hyperMILL, Creo, PDF prehliadači…).
   - Databázu otvára **len na čítanie** (`file:...?mode=ro`, `uri=True`).
 - **UI** (`ui/index.html`, `ui/style.css`, `ui/app.js`): čisté HTML/CSS/JS, bez frameworkov a buildov.
-- **Balenie**: `python build.py` → `dist\Lupa\` (`Lupa.exe`, `lupa-sken.exe` – oba onefile bez konzoly,
-  + súbory z `deploy\`: `naplanuj_sken.bat/.ps1`, `CITAJMA.txt`, `lupa.ini.example`). Celý priečinok sa
-  skopíruje na `L:\_Lupa\`. Predvolene root = `L:\`, DB = `lupa.db` vedľa exe.
+- **Balenie**: `python build.py` → `dist\Lupa\`: `app\` (Lupa onedir + `version.txt` = verzia + čas
+  zostavenia), `Lupa.exe` = spúšťač (`launcher.py`, onefile), `lupa-sken.exe` (onefile), + súbory
+  z `deploy\` a `lupa.ini.example`. Celý priečinok sa skopíruje na `L:\_Lupa\`. Predvolene root = `L:\`,
+  DB = `lupa.db` vedľa exe.
+  - **Spúšťač**: onedir zo siete nejde (.NET pywebview odmieta DLL zo sieťového disku), onefile je pomalý
+    (rozbaľuje sa pri každom štarte). Spúšťač skopíruje `app\` do `%LOCALAPPDATA%\Lupa\app\<verzia>\`
+    (len po novej verzii; každá verzia zvlášť, bežiacu nejde prepísať; staré sa zmažú) a spustí ju
+    s `LUPA_HOME` = priečinok spúšťača → `config.APP_DIR` (lupa.ini, lupa.db na L:\_Lupa).
 - **Automatický sken = ikona pri hodinách** (`tray.py`, `lupa-sken.exe --tray`): sken každú hodinu
   (prvý 2 min po štarte), menu (Skenovať teraz, Úplný sken, Otvoriť Lupu, Otvoriť log, Ukončiť),
   upozornenia Windows (L:\ nedostupný – až pri 2. neúspechu, chyby, nezverejnená DB, nové zákazky,
@@ -137,6 +153,13 @@ Slabé miesto: náš `drw0001` ↔ výkres zákazníka (iné rozloženie pohľad
 **Ďalšie možné kroky**: vlastné vykreslenie náhľadu STL (Windows ho bez doplnku nevie),
 tlačidlo „Obnoviť“ v Lupe bez reštartu.
 
+**Na rade (21.11.2026)**:
+- Pomalý štart (16 s cez sieť – meranie `zmeraj_start.py`: počet odtlačkov 8,3 s, úplnosť 4,7 s) →
+  lokálna kópia DB + pásik priebehu (overené, ~5 s – zvyšok bol štart onefile exe) → spúšťač + onedir
+  (test u používateľa: onedir z C: rýchlejší ako onefile). **Čaká na overenie spúšťača na L:\.**
+- ✅ Filter vlastníka: počty súborov len vo vybranej zákazke / u zákazníka (`get_owners(params)`).
+- **Odkazy .lnk – fáza 2** (neskôr): pri starej zákazke ukázať „odkazujú sem: zákazky X, Y“.
+
 ## Verzia 1 – rozsah (hotové)
 
 1. Skener + databáza, test najprv na **jednom zákazníkovi** (`--only`).
@@ -168,6 +191,15 @@ Schválený návrh UI (maketa): https://claude.ai/artifact/MHEAKvNtdfXvU9EaucAA1
   (oranžovo, ak je starší ako 24 h). Čas skenu z `lupa_scan.json` vedľa DB – skener ho zapisuje
   pri každom skene, aj keď DB nepublikuje.
 - Strom: klik na zákazníka = súbory všetkých jeho zákaziek; pravé tlačidlo = rozbaliť/zbaliť, otvoriť priečinok.
+- **Dvojklik na súbor = ukázať v strome** (zákazka → priečinok, súbor označený, hľadanie sa vymaže).
+  Otvoriť: tlačidlo Otvoriť, dvojklik na náhľad, Enter, pravé tlačidlo (menu: Otvoriť, Ukázať v strome,
+  Otvoriť priečinok, Kopírovať cestu/názov, Podobné výkresy, Len vlastník X). Menu cez `showMenu()`.
+- **Odkazy .lnk** (z nových zákaziek na staré): skener číta cieľ (`lnk.py`, bez COM, záloha IShellLink)
+  do `files.target` (UNC koreňa → `L:\`; '' = nezistiteľný). V zozname „→ cieľ“, dvojklik / „Prejsť
+  na cieľ odkazu“ = `Api.locate` → skok v strome (najbližší priečinok, ak presný cieľ v DB nie je).
+- Vlastník sa zobrazuje s veľkým začiatočným písmenom (`ownerName`), v DB pôvodný tvar.
+- Stĺpce: dátumy bez času (čas v bublinke a v detaile), pravé tlačidlo na hlavičke = zobraziť/skryť
+  stĺpce (`lupa.cols.v2`, `lupa.cols.hidden` v localStorage).
 - Rozloženie: strom vľavo (~260 px), zoznam v strede, detail vpravo (~360 px).
 - Písmo Inter (UI) a JetBrains Mono (názvy súborov, cesty) – ak nie sú offline dostupné, použi `Segoe UI` / `Consolas`.
 - Akcentová farba #1d4ed8. Bez emoji v UI, ikony ako inline SVG.
