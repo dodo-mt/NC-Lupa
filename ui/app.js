@@ -435,7 +435,11 @@ function folderHits() {
   const terms = state.similar ? [] : state.q.split(/\s+/).filter((t) => t && !/[*?]/.test(t) && /\d{3}/.test(t));
   if (!terms.length) return { items: [], more: 0 };
   const best = (name) => Math.min(...terms.map((t) => idRank(t, name)));
-  const cmp = (a, b) => a.r - b.r || a.name.localeCompare(b.name, 'sk', { numeric: true });
+  // rovnaká zhoda: nové značenie (OD…) pred starým (čisté číslo), potom novšie pred staršími
+  const od = (h) => (/^OD/i.test(h.name) ? 0 : 1);
+  const cmp = (a, b) => a.r - b.r || od(a) - od(b)
+    || ((b.j && b.j.changed) || 0) - ((a.j && a.j.changed) || 0)
+    || a.name.localeCompare(b.name, 'sk', { numeric: true });
   const hits = [];
   for (const c of state.tree) {
     // zákazník podľa čísla pred pomlčkou ('100919-Unitek…'), inak časť názvu
@@ -472,7 +476,9 @@ function renderFolderMenu() {
       out.push(`<div class="fm-head">${h.kind === 'job' ? 'Zákazky' : 'Zákazníci'}</div>`);
       last = h.kind;
     }
-    const sub = h.kind === 'job' ? `<span class="fm-sub">${esc(h.c.name)}</span>${complStatus(h.j.missing)}`
+    const yr = h.kind === 'job' && h.j.changed ? new Date(h.j.changed * 1000).getFullYear() : '';
+    const sub = h.kind === 'job'
+      ? `<span class="fm-sub">${esc(h.c.name)}</span><span class="fm-yr" title="Posledná zmena v zákazke: ${esc(fmtDate(h.j.changed))}">${yr}</span>${complStatus(h.j.missing)}`
       : `<span class="fm-sub">${h.c.jobs.length} ${h.c.jobs.length === 1 ? 'zákazka' : h.c.jobs.length >= 2 && h.c.jobs.length <= 4 ? 'zákazky' : 'zákaziek'}</span>`;
     out.push(`<button type="button" class="dd-item fm-item${i === fmenu.cur ? ' cur' : ''}" data-i="${i}" tabindex="-1">
       <span class="nm">${highlight(h.name)}</span>${sub}</button>`);

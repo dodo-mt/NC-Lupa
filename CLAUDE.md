@@ -132,13 +132,13 @@ prints(path, size, modified, version, views)   -- odtlačky PDF, views = odtlack
 - Hľadanie podľa časti názvu: `LIKE '%…%'` (pri raste zvážiť FTS5).
 - Odhad veľkosti: ~150 000 súborov → desiatky MB.
 
-## Stav projektu (aktuálne 1.3.3)
+## Stav projektu (aktuálne 1.3.4)
 
 Hotové: verzia 1 (nižšie) + náhľady, galéria, NC/TXT náhľad, kontrola úplnosti, exe, ikona skenu
 pri hodinách, stavový riadok, kontextové menu stromu, podobné výkresy, filter zákazníkov v `lupa.ini`,
 hľadanie čísla zákazky v strome, typy XLS/DOC zvlášť,
 lokálna kópia DB, spúšťač, nové typy, odkazy .lnk, menu zákaziek pod hľadaním (1.3.2).
-Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`, `v1.3.0`, `v1.3.1`, `v1.3.2`, `v1.3.3` (pushnuté na GitHub `origin/main`).
+Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`, `v1.3.0`, `v1.3.1`, `v1.3.2`, `v1.3.3`, `v1.3.4` (pushnuté na GitHub `origin/main`).
 
 **Ostré nasadenie (20.11.2026)**: DB `L:\_Lupa\lupa.db` na sieťovom disku (~180 MB).
 Prvý úplný sken L:\ (ešte skener 1.0 na inom PC) – ~1 h, 33 600+ zákaziek / 237 zákazníkov, bez chýb.
@@ -152,7 +152,9 @@ spúšťač (onedir v `app\`), nové typy (MODEL, OBR, MAIL, ZIP, ECAM, XLS aj x
 + upratanie DB + VACUUM, odkazy .lnk, dvojklik = ukázať v strome, kontextové menu súborov, stĺpce,
 vlastníci, strom šípkami, menu zákaziek pod hľadaním.
 **1.3.3 (21.11.2026)**: menu zákaziek – koniec čísla (`014` = `100014`) pred „začína na“, zákazníci
-majú vlastné 4 miesta. Pozor: po kopírovaní na L:\ zavrieť bežiacu Lupu (aj na lište), inak ostane stará.
+majú vlastné 4 miesta.
+**1.3.4**: menu zákaziek – `OD…` pred starými, novšie skôr, rok zmeny pri zákazke.
+Pozor: po kopírovaní na L:\ zavrieť bežiacu Lupu (aj na lište), inak ostane stará.
 Potom u používateľa: `dist\Lupa\` → `L:\_Lupa\` (celý priečinok, aj `app\`), na PC so skenerom znova
 `ikona_skenu.bat` (nový skener preradí typy, vyhodí skryté súbory, doplní ciele .lnk – bez úplného skenu).
 Overiť: ciele odkazov .lnk na sieťovom L:\ (lokálne netestovateľné), menu zákaziek pri `324` na ostrých dátach.
@@ -222,7 +224,8 @@ Schválený návrh UI (maketa): https://claude.ai/artifact/MHEAKvNtdfXvU9EaucAA1
 - Hľadanie: viac slov = AND; slovo s `*` / `?` je vzor na celý názov (`cnc_vyk*.pdf`), inak časť názvu.
 - Hľadanie čísla (od 3 číslic) otvorí **menu zákaziek a zákazníkov** pod poľom hľadania (`fmenu`):
   presné číslo bez núl a predpony (`324` = `000324` = `OD00000324`) → koniec čísla tak, ako je napísaný
-  (`014` = `100014`, nie `1914`) → číslo na začiatku → kdekoľvek; pri zákazke zákazník + úplnosť,
+  (`014` = `100014`, nie `1914`) → číslo na začiatku → kdekoľvek; pri rovnakej zhode nové značenie `OD…`
+  pred starým (`000324`), potom novšie (`jobs.last_change`); pri zákazke zákazník, rok zmeny + úplnosť,
   najviac 12 položiek, z toho najviac 4 zákazníci (aby ich nevytlačili zákazky). ↑↓ výber, Enter / klik = otvoriť v strome
   (hľadanie sa vymaže), Esc zavrie menu, druhé Esc vymaže hľadanie. Strom sa pri písaní nemení.
   Pozície (podpriečinky) v menu nie sú – opakujú sa.

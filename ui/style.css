@@ -258,6 +258,7 @@ select {
 .fm-head { padding: 6px 10px 2px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 .fm-item .nm { flex: none; min-width: 120px; font-family: var(--mono); font-size: 13px; }
 .fm-item .fm-sub { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
+.fm-item .fm-yr { flex: none; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .fm-item .st { font-size: 11px; font-weight: 600; white-space: nowrap; }
 .fm-item .st.ok { color: #15803d; }
 .fm-item .st.miss { color: #b45309; }

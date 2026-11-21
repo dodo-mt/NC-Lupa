@@ -139,8 +139,11 @@ class Api:
     def get_tree(self) -> list[dict]:
         """Zákazníci so zákazkami (bez priečinkov – tie sa načítajú pri rozbalení)."""
         customers = self._q("SELECT id, name, path FROM customers ORDER BY name COLLATE NOCASE")
+        # changed = posledná zmena v zákazke (menu zákaziek: novšie skôr, rok pri zákazke)
+        has_lc = any(r["name"] == "last_change" for r in self._q("PRAGMA table_info(jobs)"))
         jobs = self._q(
             "SELECT j.id, j.customer_id, j.name, j.path,"
+            f" {'COALESCE(j.last_change, j.dir_mtime)' if has_lc else 'j.dir_mtime'} AS changed,"
             " (SELECT COUNT(*) FROM positions p WHERE p.job_id = j.id AND p.rel_path <> '') AS subdirs"
             " FROM jobs j ORDER BY j.name COLLATE NOCASE"
         )
