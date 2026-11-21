@@ -27,6 +27,7 @@ const state = {
   sortDir: 1,
   selFile: null,
   mode: 'list',        // 'list' | 'gallery'
+  lists: false,        // len CNC listy (config.list_sql)
   similar: null,       // podobné výkresy: {id, name} hľadaného PDF, inak null
   sortBeforeSim: null, // triedenie pred podobnými výkresmi (obnoví sa po zavretí)
 };
@@ -734,6 +735,7 @@ async function refresh() {
   } else {
     res = await api.search({
       q: state.q,
+      lists: state.lists,
       owner: state.owner,
       types,
       scope: state.scope,
@@ -1258,6 +1260,11 @@ function bind() {
     renderChips();
     refresh();
   });
+  $('listsBadge').addEventListener('click', () => {
+    state.lists = false;
+    renderListsChip();
+    refresh();
+  });
   $('chipsNone').addEventListener('click', () => {
     state.typesOn = new Set();
     renderChips();
@@ -1571,6 +1578,11 @@ function pickOwner(owner) {
   refresh();
 }
 
+// štítok „CNC listy ✕“ nad zoznamom – len keď je zapnutý (filtrom)
+function renderListsChip() {
+  $('listsBadge').hidden = !state.lists;
+}
+
 function renderOwnerChip() {
   $('ownerValue').textContent = ownerName(state.owner) || 'Všetci';
   $('ownerChip').classList.toggle('active', !!state.owner);
@@ -1583,14 +1595,18 @@ function renderOwnerChip() {
 const VIEWS_KEY = 'lupa.views';
 const DEFAULT_VIEWS = [
   { name: 'Moje programy', owner: '@me', types: ['HMC', 'ECAM'], q: '', scope: 'all', mode: 'gallery' },
-  { name: 'Moje CNC listy', owner: '@me', types: ['PDF'], q: 'cnc_vyk*.pdf', scope: 'all', mode: 'gallery' },
+  { name: 'Moje CNC listy', owner: '@me', types: null, q: '', lists: true, scope: 'all', mode: 'gallery' },
 ];
+// predvolený filter z 1.3.7 (len cnc_vyk*.pdf) – nahradiť novým, ak ho používateľ nemenil
+const OLD_CNC_VIEW = { name: 'Moje CNC listy', owner: '@me', types: ['PDF'], q: 'cnc_vyk*.pdf', scope: 'all' };
 let me = { user: '', owner: '' };   // prihlásený používateľ a jeho tvar v DB (api.whoami)
 
 function userViews() {
   const raw = lsGet(VIEWS_KEY, null);
   if (raw === null) return DEFAULT_VIEWS.map((v) => ({ ...v }));   // ešte nič neuložené
-  try { return JSON.parse(raw) || []; } catch (e) { return []; }
+  let list;
+  try { list = JSON.parse(raw) || []; } catch (e) { return []; }
+  return list.map((v) => (v.name === OLD_CNC_VIEW.name && sameView(v, OLD_CNC_VIEW) ? { ...DEFAULT_VIEWS[1] } : v));
 }
 
 function saveUserViews(list) {
@@ -1611,7 +1627,8 @@ function meOwner() {
 
 function viewSummary(v) {
   const who = v.owner === '@me' ? 'ja' : v.owner ? ownerName(v.owner) : 'všetci';
-  const types = v.types ? v.types.join(' + ') : 'všetky typy';
+  const types = v.lists ? `CNC listy${v.types ? ` (${v.types.join(' + ')})` : ''}`
+    : v.types ? v.types.join(' + ') : 'všetky typy';
   const scope = v.scope === 'all' ? $('scopeAll').textContent : 'aktuálna zákazka';
   return [who, types, v.q ? `„${v.q}“` : '', scope, v.mode === 'gallery' ? 'galéria' : 'zoznam']
     .filter(Boolean).join(' · ');
@@ -1622,7 +1639,7 @@ function currentView() {
   return {
     owner: state.owner && state.owner === meOwner() ? '@me' : state.owner,
     types: all ? null : state.typeKeys.filter((k) => state.typesOn.has(k)),
-    q: state.q, scope: state.scope, mode: state.mode,
+    q: state.q, lists: !!state.lists, scope: state.scope, mode: state.mode,
   };
 }
 
@@ -1631,7 +1648,7 @@ function currentView() {
 function sameView(a, b) {
   const t = (v) => (v.types ? [...v.types].sort().join(',') : '*');
   return (a.owner || '') === (b.owner || '') && t(a) === t(b) && (a.q || '') === (b.q || '')
-    && (a.scope || 'job') === (b.scope || 'job');
+    && !!a.lists === !!b.lists && (a.scope || 'job') === (b.scope || 'job');
 }
 
 function activeView() {
@@ -1654,7 +1671,7 @@ let beforeView = null;   // rozsah a zobrazenie pred zapnutím filtra (vráti ic
 function clearView() {
   const back = beforeView || { scope: state.sel ? 'job' : 'all', mode: state.mode };
   beforeView = null;
-  applyView({ owner: '', types: null, q: '', scope: back.scope, mode: back.mode }, true);
+  applyView({ owner: '', types: null, q: '', lists: false, scope: back.scope, mode: back.mode }, true);
 }
 
 function applyView(v, restoring = false) {
@@ -1669,6 +1686,8 @@ function applyView(v, restoring = false) {
   renderOwnerChip();
   state.typesOn = new Set(v.types ? v.types.filter((k) => state.typeKeys.includes(k)) : state.typeKeys);
   renderChips();
+  state.lists = !!v.lists;
+  renderListsChip();
   state.q = v.q || '';
   $('q').value = state.q;
   $('qClear').hidden = !state.q;
@@ -1691,6 +1710,13 @@ function openViewsMenu() {
     action: () => (act && act.name === v.name ? clearView() : applyView(v)),
   }));
   if (items.length) items.push('-');
+  // pravidlo „CNC listy“ (config.list_sql) – zapnúť/vypnúť kedykoľvek, uloží sa s filtrom
+  items.push({ text: 'Len CNC listy', checked: !!state.lists, action: () => {
+    state.lists = !state.lists;
+    renderListsChip();
+    refresh();
+  } });
+  items.push('-');
   items.push(['Uložiť aktuálny filter…', () => openViewDialog('')]);
   if (list.length) {
     items.push(['Prepísať filter aktuálnym…', () => {

@@ -319,6 +319,12 @@ select {
   padding: 2px;
 }
 .linkbtn:hover { text-decoration: underline; }
+/* štítok „len CNC listy“ nad zoznamom (zapína ho filter), ✕ = vypnúť; farby ako XLS */
+.lists-badge { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px 0 10px;
+  border: 1px solid #134e4a; border-radius: 999px; background: #ccfbf1; color: #134e4a;
+  font-size: 12px; font-weight: 600; cursor: pointer; }
+.lists-badge[hidden] { display: none; }
+.lists-badge:hover { background: #99f6e4; }
 .sep { color: #d1d5db; font-size: 12px; margin: 0 -4px; }
 
 /* prepínače (rozsah, zoznam/galéria) – výška ako štítky */

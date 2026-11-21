@@ -65,6 +65,16 @@ CREATE TABLE IF NOT EXISTS prints (
     views    BLOB            -- odtlacky.pack(); NULL = PDF sa nedalo spracovať / bez obsahu
 );
 
+-- CNC listy podľa obsahu (listy.py) – len Word / Excel, ktorých meno nie je jasné; kľúč ako prints
+CREATE TABLE IF NOT EXISTS doclists (
+    path     TEXT PRIMARY KEY,
+    size     INTEGER,
+    modified REAL,
+    version  INTEGER,
+    is_list  INTEGER,        -- 1 = CNC list, 0 = nie, NULL = súbor sa nedal prečítať
+    why      TEXT            -- čo sa našlo (R:\\…, Programátor: + Názov stroja…) / chyba
+);
+
 CREATE INDEX IF NOT EXISTS ix_jobs_customer   ON jobs(customer_id);
 CREATE INDEX IF NOT EXISTS ix_positions_job   ON positions(job_id);
 CREATE INDEX IF NOT EXISTS ix_files_name      ON files(name);

@@ -60,6 +60,7 @@ class Api:
         self._idx = None                  # (značka DB, ViewIndex, cesty) – podobné výkresy
         self._idx_lock = threading.Lock()
         self._cols = (None, "")           # (kópia DB, stĺpce súborov) – stará DB nemá files.target
+        self._doclists = (None, False)    # (kópia DB, má tabuľku doclists) – CNC listy podľa obsahu
         self._links = (None, [])          # (kópia DB, odkazy .lnk) – „Odkazujú sem“
 
     def _file_cols(self) -> str:
@@ -69,6 +70,14 @@ class Api:
             has = any(r["name"] == "target" for r in self._q("PRAGMA table_info(files)"))
             self._cols = (path, FILE_COLS + (", f.target" if has else ", NULL AS target"))
         return self._cols[1]
+
+    def _has_doclists(self) -> bool:
+        """DB od skenera 1.3.9 má tabuľku doclists (CNC listy podľa obsahu Wordu / Excelu)."""
+        path = self._copy.path()
+        if self._doclists[0] != path:
+            has = bool(self._q("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'doclists'"))
+            self._doclists = (path, has)
+        return self._doclists[1]
 
     def _q(self, sql: str, args=()) -> list[dict]:
         # Dotazy idú do lokálnej kópie (dbcopy) – cez sieť je SQLite ~40× pomalšie.
@@ -170,10 +179,17 @@ class Api:
             " FROM jobs j ORDER BY j.name COLLATE NOCASE"
         )
         # kontrola úplnosti: typy a prípony súborov v každej zákazke
+        # LIST = CNC list (config.list_sql); PDF, ktoré je CNC listom, nie je výkres („PDF“)
         jtypes: dict[int, set] = {}
         jexts: dict[int, set] = {}
-        for r in self._q("SELECT job_id, ftype, ext FROM files GROUP BY job_id, ftype, ext"):
-            jtypes.setdefault(r["job_id"], set()).add(r["ftype"])
+        lst, largs = config.list_sql("f", self._has_doclists())
+        for r in self._q(f"SELECT f.job_id, f.ftype, f.ext, {lst} AS lst FROM files f"
+                         " GROUP BY f.job_id, f.ftype, f.ext, lst", largs):
+            t = jtypes.setdefault(r["job_id"], set())
+            if r["lst"]:
+                t.add("LIST")
+            if not (r["lst"] and r["ftype"] == "PDF"):
+                t.add(r["ftype"])
             jexts.setdefault(r["job_id"], set()).add(r["ext"])
         by_cust: dict[int, list] = {}
         for j in jobs:
@@ -346,7 +362,8 @@ class Api:
 
         params: q (text, slová sa AND-ujú), owner ('' = všetci), types (zoznam kľúčov,
         prázdny/None = všetky), scope ('job' = výber v strome | 'all'),
-        customer_id (vybraný zákazník), job_id, rel (priečinok v zákazke).
+        customer_id (vybraný zákazník), job_id, rel (priečinok v zákazke),
+        lists (True = len CNC listy, config.list_sql).
         """
         q = (params.get("q") or "").strip()
         owner = params.get("owner") or ""
@@ -379,6 +396,10 @@ class Api:
         if types:
             where.append(f"f.ftype IN ({','.join('?' * len(types))})")
             args += list(types)
+        if params.get("lists"):
+            lst, largs = config.list_sql("f", self._has_doclists())
+            where.append(lst)
+            args += largs
 
         base = (
             " FROM files f JOIN positions p ON p.id = f.position_id"

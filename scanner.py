@@ -522,6 +522,67 @@ def update_prints(con, minutes: float, customer: str | None = None, progress=Non
     return res
 
 
+# ---------------------------------------------------------------------------
+# CNC listy podľa obsahu (Word / Excel, ktorých meno nie je jasné) – listy.py
+# ---------------------------------------------------------------------------
+def update_doclists(con, rules, customer: str | None = None, progress=None, on_change=None) -> dict:
+    """Prečíta obsah Wordov / Excelov bez jasného mena a uloží, či sú CNC list (najnovšie prvé),
+    najviac rules.minutes minút. Zmazaným súborom záznam odstráni.
+    Vracia {'lists', 'other', 'failed', 'removed', 'left'}."""
+    res = {"lists": 0, "other": 0, "failed": 0, "removed": 0, "left": 0}
+    if rules.minutes <= 0:
+        return res
+    if not customer:
+        res["removed"] = con.execute(
+            "DELETE FROM doclists WHERE path NOT IN (SELECT path FROM files WHERE ftype IN ('DOC', 'XLS'))"
+        ).rowcount
+        if res["removed"] and on_change:
+            on_change()
+        con.commit()
+
+    sql = ("SELECT f.path, f.name, f.size, f.modified FROM files f LEFT JOIN doclists d ON d.path = f.path"
+           " WHERE f.ftype IN ('DOC', 'XLS') AND (d.path IS NULL OR d.size IS NOT f.size"
+           " OR d.modified IS NOT f.modified OR d.version IS NOT ?)")
+    args = [rules.version]
+    if customer:
+        sql += " AND f.customer_id = (SELECT id FROM customers WHERE name = ? COLLATE NOCASE)"
+        args.append(customer)
+    # listy podľa mena netreba otvárať (Lupa ich spozná podľa mena)
+    todo = [r for r in con.execute(sql + " ORDER BY f.modified DESC", args)
+            if not rules.by_name(r[1]) and not r[1].startswith("~$")]
+    if not todo:
+        return res
+
+    log.info("CNC listy podľa obsahu: na prečítanie %d dokumentov (limit %g min)", len(todo), rules.minutes)
+    if on_change:
+        on_change()
+    deadline = time.time() + rules.minutes * 60
+    processed = 0
+    for i, (path, _name, size, modified) in enumerate(todo):
+        if time.time() > deadline:
+            break
+        processed += 1
+        if progress and i % 20 == 0:
+            progress(i + 1, len(todo), "CNC listy")
+        try:
+            ok, why = rules.by_content(path if len(path) < 260 else to_long(path))
+            is_list = 1 if ok else 0
+            res["lists" if ok else "other"] += 1
+        except Exception as e:   # zamknutý / poškodený / zaheslovaný – nabudúce len pri zmene súboru
+            is_list, why = None, f"{type(e).__name__}: {e}"[:200]
+            res["failed"] += 1
+            log.debug("Obsah dokumentu sa nedal prečítať %s: %s", path, e)
+        con.execute("INSERT OR REPLACE INTO doclists(path, size, modified, version, is_list, why)"
+                    " VALUES (?,?,?,?,?,?)", (path, size, modified, rules.version, is_list, why))
+        if i % 50 == 49:
+            con.commit()
+    con.commit()
+    res["left"] = len(todo) - processed
+    log.info("CNC listy podľa obsahu: listy %d, iné %d, nedali sa prečítať %d, zostáva %d, zmazané %d",
+             res["lists"], res["other"], res["failed"], res["left"], res["removed"])
+    return res
+
+
 LOCAL_LOG = config.LOCAL_DIR / "lupa_scan.log"
 
 
@@ -661,6 +722,14 @@ def run_scan(root: str, db_path: Path, full=False, auto=False, only=None,
             # zmeny súborov sa zverejnia pri ďalšom skene (pracovná kópia sa zachová)
             if sc.changed:
                 pending.touch()
+            try:
+                dl = update_doclists(con, st["listy"], only, progress, on_change=pending.touch)
+                res["doclists"] = dl
+                if dl["lists"] or dl["other"] or dl["failed"] or dl["removed"]:
+                    sc.changed = True
+            except Exception:  # CNC listy nesmú pokaziť sken súborov
+                log.exception("CNC listy podľa obsahu zlyhali")
+                con.rollback()
             try:
                 pr = update_prints(con, prints_minutes, only, progress, on_change=pending.touch)
                 res["prints"] = pr

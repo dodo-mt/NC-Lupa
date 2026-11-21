@@ -132,13 +132,13 @@ prints(path, size, modified, version, views)   -- odtlačky PDF, views = odtlack
 - Hľadanie podľa časti názvu: `LIKE '%…%'` (pri raste zvážiť FTS5).
 - Odhad veľkosti: ~150 000 súborov → desiatky MB.
 
-## Stav projektu (aktuálne 1.3.7)
+## Stav projektu (aktuálne 1.3.9)
 
 Hotové: verzia 1 (nižšie) + náhľady, galéria, NC/TXT náhľad, kontrola úplnosti, exe, ikona skenu
 pri hodinách, stavový riadok, kontextové menu stromu, podobné výkresy, filter zákazníkov v `lupa.ini`,
 hľadanie čísla zákazky v strome, typy XLS/DOC zvlášť,
 lokálna kópia DB, spúšťač, nové typy, odkazy .lnk, menu zákaziek pod hľadaním (1.3.2).
-Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`, `v1.3.0`, `v1.3.1`, `v1.3.2`, `v1.3.3`, `v1.3.4` (pushnuté na GitHub `origin/main`).
+Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`, `v1.3.0`, `v1.3.1`, `v1.3.2`, `v1.3.3`, `v1.3.4`, `v1.3.6`, `v1.3.7`, `v1.3.9` (pushnuté na GitHub `origin/main`).
 
 **Ostré nasadenie (20.11.2026)**: DB `L:\_Lupa\lupa.db` na sieťovom disku (~180 MB).
 Prvý úplný sken L:\ (ešte skener 1.0 na inom PC) – ~1 h, 33 600+ zákaziek / 237 zákazníkov, bez chýb.
@@ -158,6 +158,10 @@ majú vlastné 4 miesta.
 **1.3.6**: odkazy .lnk oboma smermi + ikonka v strome, náhľady DXF a DWG (`vykres.py`).
 **1.3.7**: Moje filtre (fajka, vypnutie klikom, predvolené upraviteľné), Zoznam/Galéria nad zoznamom
 + Ctrl+G, hľadanie presne nad zoznamom, v detaile len priečinok.
+**1.3.8** (len build, vydané v 1.3.9): CNC listy – pravidlo `config.list_sql`
+(štítok Listy, PDF = len výkres, filter „Moje CNC listy“ so štítkom „CNC listy ✕“).
+**1.3.9**: CNC listy podľa obsahu Wordu / Excelu (skener, `listy.py`, tabuľka `doclists`) – v práci
+treba znova `ikona_skenu.bat` (nový skener); kým neprejde dokumenty, platí len meno.
 Pozor: po kopírovaní na L:\ zavrieť bežiacu Lupu (aj na lište), inak ostane stará.
 Potom u používateľa: `dist\Lupa\` → `L:\_Lupa\` (celý priečinok, aj `app\`), na PC so skenerom znova
 `ikona_skenu.bat` (nový skener preradí typy, vyhodí skryté súbory, doplní ciele .lnk – bez úplného skenu).
@@ -199,6 +203,24 @@ rozmery zo STP by sa hodili k podobným výkresom.
    Nevykreslený výkres → náhľad/ikona z Windows. Vo vzorkách 17/17 (aj staré DWG R14).
 2. ✅ **Galéria** – mriežka náhľadov, posuvník veľkosti, triedenie.
 3. ✅ Kontrola **úplnosti zákazky** (Model / PDF / CAM / NC / Listy) – stav v strome + štítky.
+   **CNC list** (`listy.py` – jedno pravidlo pre skener, Lupu aj `skuska_listy.py`; štítok Listy aj
+   filter „Moje CNC listy“): 1. meno `listy_mena` (`*cnc*, *prog*list*, *pgm*list*, *poloha*`) – Word,
+   Excel aj PDF; 2. PDF v priečinku `listy_priecinky` (`*cnc*list*`); 3. Word / Excel s nejasným menom
+   podľa **obsahu**: cesta `R:\priečinok\…` (NC programy na serveri) alebo aspoň 2 slová z `listy_obsah`
+   (Programátor:, CESTA:, Názov stroja, Výrobný príkaz:, Artikel:, Výkres:, Program-číslo: – sústruh).
+   Priečinok „CNC listy“ o Worde / Exceli nerozhoduje (nástrojové listy, náčrty). Prídavky
+   (`upnutie na magnet.docx`) a poznámky (`CITAJ.doc`) listom nie sú. Takéto PDF sa do „PDF“ nepočíta.
+   Obsah číta **skener** (`update_doclists`, pred odtlačkami, `listy_minutes` min na sken, najnovšie
+   prvé) do tabuľky `doclists` (cesta, veľkosť, zmenený, verzia = algoritmus + slová z ini, is_list, why);
+   staré .doc len prvých 256 kB (text je na začiatku, za ním fotky), .xls 8 MB; UTF-16 aj s č/Č/ď/Ď
+   (dolný bajt 0x0C–0x0F – chyba v skúške). Lupa: SQL `listy.list_sql` – meno, inak `doclists`
+   (sedí veľkosť + zmenený; verziu nekontroluje), stará DB bez tabuľky = len meno.
+   Skúška (`skuska_listy.exe`, 11/2026): Kuka 1120 dok., Bühler 2333, Rejlek 1291, Nedschroef 1085 –
+   ~80 % podľa mena, 5–10 % podľa obsahu; za 14–80 s na zákazníka cez sieť.
+   „Moje CNC listy“ = ja · CNC listy · celé L:\ · galéria (starý predvolený `cnc_vyk*.pdf` sa nahradí).
+   Na lište filtrov tlačidlo nie je – zapína sa filtrom alebo položkou „Len CNC listy“ (fajka) v menu
+   Moje filtre; keď je zapnuté, nad zoznamom je štítok
+   „CNC listy ✕“ (klik = vypnúť). Hľadanie to nenahradí: len meno (nie priečinok), slová = AND.
 4. ✅ Exe na `L:\_Lupa\` (`build.py`) + ikona skenu pri hodinách (namiesto Plánovača úloh).
 5. ✅ **Nájdi podobné výkresy** – offline obrazové „odtlačky“ PDF (orezať rám a pečiatku), neskôr kombinácia s rozmermi zo STP.
    Metóda: list → pohľady (zhluky čiar) → mriežka 16×16, porovnanie v 8 symetriách, slabší z oboch smerov.

@@ -21,3 +21,16 @@ prints_minutes = 30
 customers = [0-9]*, OD*
 ; Vynechať aj tieto (platí navyše ku customers), napr. skryté a koše:
 exclude = .*, AI_RecycleBin
+
+; CNC listy (štítok „Listy“ pri zákazke a filter „Moje CNC listy“).
+; 1. meno sedí na listy_mena (Word, Excel aj PDF) -> CNC list
+; 2. PDF v priečinku (v zákazke), ktorý sedí na listy_priecinky -> CNC list
+; 3. Word / Excel s nejasným menom: skener prečíta obsah – cesta R:\priečinok\… alebo aspoň
+;    listy_obsah_min slov z listy_obsah -> CNC list (veľké/malé písmená ani diakritika nehrajú rolu)
+; PDF, ktoré je CNC listom, sa do štítku „PDF“ (výkres) nepočíta. Vzory ako vyššie, oddelené čiarkou.
+listy_mena = *cnc*, *prog*list*, *pgm*list*, *poloha*
+listy_priecinky = *cnc*list*
+listy_obsah = Programátor:, CESTA:, Názov stroja, Výrobný príkaz:, Artikel:, Výkres:, Program-číslo:
+listy_obsah_min = 2
+; čítanie obsahu dokumentov: najviac N minút na jeden sken (prvé prejdenie L:\ sa rozloží), 0 = vypnuté
+listy_minutes = 10

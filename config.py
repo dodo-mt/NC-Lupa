@@ -8,8 +8,10 @@ import os
 import sys
 from pathlib import Path
 
+import listy
+
 # Verzia aplikácie – zvyšovať pri každom vydaní (zobrazuje sa v UI, ikone skenu, logu a vo vlastnostiach exe)
-VERSION = "1.3.7"
+VERSION = "1.3.9"
 
 # Priečinok programu (pri PyInstaller exe = priečinok s exe). Lupa beží z lokálnej kópie
 # v %LOCALAPPDATA% (launcher.py) – spúšťač jej v LUPA_HOME odovzdá svoj priečinok (L:\_Lupa),
@@ -30,6 +32,8 @@ _DEFAULTS = {
     "prints_minutes": "30",
     "customers": "",
     "exclude": "",
+    # CNC listy (listy.py): listy_mena, listy_priecinky, listy_obsah, listy_obsah_min, listy_minutes
+    **listy.DEFAULTS,
 }
 
 
@@ -67,6 +71,7 @@ def scan_settings(db_path: Path) -> dict:
         "recent_days": int(ini["recent_days"]),
         "prints_minutes": float(ini["prints_minutes"]),
         "customers": _patterns(ini["customers"]),
+        "listy": listy.Rules(ini),
         "exclude": _patterns(ini["exclude"]),
     }
 
@@ -109,14 +114,25 @@ FILE_TYPES = {
     "ZIP": ("Archív", ["zip", "rar", "7z"], "#e7e5e4", "#44403c"),
 }
 
-# Kontrola úplnosti zákazky: (názov, typy, prípony) – stačí ktorýkoľvek typ alebo prípona
+# Kontrola úplnosti zákazky: (názov, typy, prípony) – stačí ktorýkoľvek typ alebo prípona.
+# LIST = CNC list (list_sql nižšie); PDF, ktoré je CNC listom, sa do „PDF“ (výkres) nepočíta.
 COMPLETENESS = [
     ("Model", ["MODEL", "CREO"], []),
     ("PDF", ["PDF"], []),
     ("CAM", ["HMC", "ECAM"], []),
     ("NC", ["NC"], []),
-    ("Listy", ["XLS", "DOC"], []),
+    ("Listy", ["LIST"], []),
 ]
+
+
+# CNC listy – pravidlo v listy.py (meno, priečinok PDF, obsah Wordu / Excelu z tabuľky doclists).
+# Lupa: lupa.ini vedľa programu (na L:\_Lupa aj vedľa DB); skener: scan_settings()["listy"].
+LIST_RULES = listy.Rules(_ini)
+
+
+def list_sql(f: str = "f", doclists: bool = True) -> tuple[str, list]:
+    """SQL podmienka „súbor je CNC list“ (listy.list_sql s pravidlom z lupa.ini)."""
+    return listy.list_sql(LIST_RULES, f, doclists)
 
 
 def missing_parts(ftypes: set, exts: set) -> list[str]:

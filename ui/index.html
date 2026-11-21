@@ -72,6 +72,12 @@
         <div class="links" id="links" hidden></div>
       </div>
       <div class="head-right">
+        <!-- len CNC listy (zapína ho filter „Moje CNC listy“), ✕ = vypnúť -->
+        <button type="button" class="lists-badge" id="listsBadge" hidden
+          title="Len CNC listy: Excel; Word a PDF s „cnc“, „programový list“ alebo „poloha“ v mene, alebo v priečinku „CNC listy“ (lupa.ini). Klik = vypnúť.">
+          CNC listy
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+        </button>
         <span class="count" id="count"></span>
         <div class="viewsw" role="group" aria-label="Zobrazenie">
           <button type="button" data-mode="list" id="modeList" title="Zoznam (Ctrl+G prepína)" aria-label="Zoznam"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"></path><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01" stroke-width="3"></path></svg></button>
