@@ -20,11 +20,14 @@ L:\<Zákazník>\<Zákazka>\[voliteľne 1+ medziúrovne: pozícia / číslo / tex
 - Medziúrovne nemajú pevnú hĺbku a pomenovanie je rôzne (`DVA KUSY`, `OP20`, `POLOTOVAR`, `21750-1A`, `3DF`…)
   → **pozícia = skutočný priečinok** v zákazke (tabuľka `positions`, koreň zákazky má `rel_path = ''`).
   Žiadne hádanie, čo je „pozícia“; strom ukazuje reálne podpriečinky. Klik na zákazku ukáže všetky jej súbory.
-- **Skener preskakuje** (zoznamy v `config.py`): priečinky `POF\`, `VNC\`, `STOCK\`, `3DF\` (interné dáta hyperMILL),
-  súbory `Thumbs.db`, `desktop.ini`, prípony `.bak .hmc_bak .hyperMILL .dwl .dwl2 .log .tmp .out .err .dep`
-  (`.H.T.DEP` Heidenhain, `std.err/out`), vzory `*.log.*` a `*_log.xml` (logy z exportu Creo),
-  `trail.txt*`, `*.sec`, `*.sec.*` (Creo). Pravidlo = `config.is_ignored`; po jeho zmene skener
-  pri ďalšom skene zmaže takéto súbory z DB (`drop_ignored`).
+- **Skener preskakuje** (zoznamy v `config.py`): priečinky (vzory) `POF*` (POF111, pof2…), `VNC`, `STOCK`,
+  `3DF`, `DEF`, `GEO` (interné dáta hyperMILL – `config.is_ignored_dir`),
+  súbory `Thumbs.db`, `desktop.ini`, prípony `.bak .hmc_bak .hyperMILL .dwl .dwl2 .log .tmp .out .err .dep
+  .pof .rsf .idx .xpr .m_p .crc .pro` (`.H.T.DEP` Heidenhain, `std.err/out`, `config.pro` Creo),
+  vzory `*.log.*` a `*_log.xml` (logy z exportu Creo), `trail.txt*`, `*.sec`, `*.sec.*`, `*.frm.*`,
+  `*.lsl.*`, `*.inf.*` (Creo s číslom verzie). `.xml` a `.ini` mimo POF ostávajú (môžu byť užitočné).
+  Pravidlo = `config.is_ignored`; po jeho zmene skener pri ďalšom skene zmaže takéto súbory
+  aj priečinky z DB (`drop_ignored`). „Zobraziť všetko“ zámerne nie – DB by narástla, na to je Prieskumník.
 - Staré značenie: zákazník môže byť aj v starom tvare (napr. `OD067` = dnešný `100020`) a zákazky v ňom
   majú čísla ako `009712`. Lupa ich berie bežne ako zákazník → zákazka.
 - NC programy bývajú v podpriečinku `NC\` (triedené po strojoch: eVo 80, monoBLOCK H640, DMC 160, monoBLOCK 840D).
@@ -35,17 +38,18 @@ L:\<Zákazník>\<Zákazka>\[voliteľne 1+ medziúrovne: pozícia / číslo / tex
 | Typ | Prípony | Farba (pozadie / text) |
 |-----|---------|------------------------|
 | PDF – výkres | .pdf | #fee2e2 / #7f1d1d |
-| MODEL – 3D model | .stp .step .igs .iges .x_t .x_b .stl | #dbeafe / #1e3a8a |
+| MODEL – 3D model | .stp .step .igs .iges .x_t .x_b .stl .catpart .catproduct .meg | #dbeafe / #1e3a8a |
 | HMC – hyperMILL | .hmc | #ffedd5 / #7c2d12 |
-| PPF – hyperMILL | .ppf | #fef3c7 / #78350f |
-| NC – programy | .h .nc .mpf .spf .wpd .eia .nd1 .nd2 .arc | #dcfce7 / #14532d |
+| ECAM – Edgecam | .ppf | #fef3c7 / #78350f |
+| NC – programy | .h .nc .mpf .spf .wpd .eia .nd1 .nd2 .arc .dmg | #dcfce7 / #14532d |
 | XLS – Excel (CNC listy) | .xlsx .xlsm .xls (všetky Excely – väčšinou CNC listy) | #ccfbf1 / #134e4a |
 | DOC – Word | .doc .docx | #e0e7ff / #312e81 |
-| CREO – Creo | .prt.N .drw.N .asm.N (N = verzia, berie sa len najvyššia v priečinku) | #f9ded3 / #8a3517 |
+| CREO – Creo | .prt.N .drw.N .asm.N (N = verzia, berie sa len najvyššia v priečinku), .cgm (zjednodušený výkres) | #f9ded3 / #8a3517 |
 | DWG – AutoCAD | .dwg .dxf | #ede9fe / #4c1d95 |
 | OBR – obrázok / sken | .tif .tiff .jpg .jpeg .png .bmp .gif .webp .heic | #fce7f3 / #831843 |
 | TXT – poznámky | .txt (náhľad ako text) | #ecfccb / #365314 |
 | MAIL – e-mail | .msg .eml | #fae8ff / #86198f |
+| ZIP – archív | .zip .rar .7z | #e7e5e4 / #44403c |
 | Ostatné | * | #f3f4f6 / #374151 |
 
 Málo štítkov je zámer (jeden riadok filtrov) – nové prípony radšej do existujúcej skupiny.
@@ -191,6 +195,8 @@ Schválený návrh UI (maketa): https://claude.ai/artifact/MHEAKvNtdfXvU9EaucAA1
   (oranžovo, ak je starší ako 24 h). Čas skenu z `lupa_scan.json` vedľa DB – skener ho zapisuje
   pri každom skene, aj keď DB nepublikuje.
 - Strom: klik na zákazníka = súbory všetkých jeho zákaziek; pravé tlačidlo = rozbaliť/zbaliť, otvoriť priečinok.
+  Klávesnica (fokus v strome): ↑/↓ posun (súbory po 250 ms), ← zbaliť / na nadradený, → rozbaliť /
+  na prvý podriadený, Home/End. Otvorený zákazník sa pri rolovaní drží hore (`.cgroup`, sticky).
 - **Dvojklik na súbor = ukázať v strome** (zákazka → priečinok, súbor označený, hľadanie sa vymaže).
   Otvoriť: tlačidlo Otvoriť, dvojklik na náhľad, Enter, pravé tlačidlo (menu: Otvoriť, Ukázať v strome,
   Otvoriť priečinok, Kopírovať cestu/názov, Podobné výkresy, Len vlastník X). Menu cez `showMenu()`.
@@ -207,9 +213,11 @@ Schválený návrh UI (maketa): https://claude.ai/artifact/MHEAKvNtdfXvU9EaucAA1
   uložené v `%LOCALAPPDATA%\Lupa\window.json`). Ak monitor chýba, otvorí sa v predvolenej polohe.
 - Panely sú ťahateľné (viditeľný úchyt s bodkami), šírka sa pamätá. Tabuľky sa nezmačkávajú – radšej vodorovný posuvník.
 - Hľadanie: viac slov = AND; slovo s `*` / `?` je vzor na celý názov (`cnc_vyk*.pdf`), inak časť názvu.
-- Hľadanie čísla zákazky/zákazníka (`OD21750` = `OD00021750`, bez úvodných núl) rozbalí a zvýrazní
-  zhodu v strome (najviac 10), Enter / klik = otvoriť zákazku celú (hľadanie sa vymaže).
-  Rozbalenie z hľadania sa pri ďalšom hľadaní zbalí (`state.autoOpen`).
+- Hľadanie čísla (od 3 číslic) otvorí **menu zákaziek a zákazníkov** pod poľom hľadania (`fmenu`):
+  presné číslo bez núl a predpony (`324` = `000324` = `OD00000324`) → číslo na začiatku → kdekoľvek;
+  pri zákazke zákazník + úplnosť, najviac 12 položiek. ↑↓ výber, Enter / klik = otvoriť v strome
+  (hľadanie sa vymaže), Esc zavrie menu, druhé Esc vymaže hľadanie. Strom sa pri písaní nemení.
+  Pozície (podpriečinky) v menu nie sú – opakujú sa.
 
 ## Súvisiace nástroje používateľa
 

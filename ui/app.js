@@ -28,9 +28,6 @@ const state = {
   selFile: null,
   mode: 'list',        // 'list' | 'gallery'
   similar: null,       // podobné výkresy: {id, name} hľadaného PDF, inak null
-  hitJobs: new Set(),  // zákazky, ktorých číslo sedí s hľadaním (zvýraznené v strome)
-  hitCusts: new Set(), // zákazníci, ktorých číslo sedí s hľadaním
-  autoOpen: { custs: new Set(), jobs: new Set() }, // čo rozbalilo hľadanie (pri ďalšom sa zbalí)
   sortBeforeSim: null, // triedenie pred podobnými výkresmi (obnoví sa po zavretí)
 };
 
@@ -201,15 +198,19 @@ function renderTree() {
   const out = [];
   for (const c of state.tree) {
     const open = state.openCust.has(c.id);
-    out.push(`<div class="node cust${open ? ' open' : ''}${isSelCust(c.id) ? ' sel' : ''}${state.hitCusts.has(c.id) ? ' hit' : ''}" data-cust="${c.id}" style="padding-left:6px">
+    // zákazník so zákazkami v jednej skupine – otvorený zákazník sa pri rolovaní drží hore (sticky)
+    out.push('<div class="cgroup">');
+    out.push(`<div class="node cust${open ? ' open' : ''}${isSelCust(c.id) ? ' sel' : ''}" data-cust="${c.id}" style="padding-left:6px">
       <span class="tw">${ICON_CHEVRON}</span><span class="lbl">${esc(c.name)}</span><span class="num">${c.jobs.length}</span></div>`);
-    if (!open) continue;
-    for (const j of c.jobs) {
-      const jOpen = state.openJobs.has(j.id);
-      out.push(`<div class="node job${jOpen ? ' open' : ''}${isSelNode(j.id, '') ? ' sel' : ''}${state.hitJobs.has(j.id) ? ' hit' : ''}" data-job="${j.id}" style="padding-left:22px">
-        <span class="tw">${j.subdirs ? ICON_CHEVRON : ''}</span><span class="lbl">${esc(j.name)}</span>${complStatus(j.missing)}</div>`);
-      if (jOpen && state.positions[j.id]) renderDirs(out, j.id, buildDirTree(state.positions[j.id]), 2);
+    if (open) {
+      for (const j of c.jobs) {
+        const jOpen = state.openJobs.has(j.id);
+        out.push(`<div class="node job${jOpen ? ' open' : ''}${isSelNode(j.id, '') ? ' sel' : ''}" data-job="${j.id}" style="padding-left:22px">
+          <span class="tw">${j.subdirs ? ICON_CHEVRON : ''}</span><span class="lbl">${esc(j.name)}</span>${complStatus(j.missing)}</div>`);
+        if (jOpen && state.positions[j.id]) renderDirs(out, j.id, buildDirTree(state.positions[j.id]), 2);
+      }
     }
+    out.push('</div>');
   }
   $('tree').innerHTML = out.join('');
 }
@@ -232,8 +233,6 @@ async function onTreeClick(e) {
   if (!node) return;
   const onTwisty = !!e.target.closest('.tw');
 
-  if (!onTwisty && node.classList.contains('hit')) clearSearchQuiet();
-
   if (node.dataset.cust) {
     // klik na šípku = rozbaliť/zbaliť; klik na názov = vybrať zákazníka (+ rozbaliť), druhý klik zbalí
     const id = Number(node.dataset.cust);
@@ -244,6 +243,8 @@ async function onTreeClick(e) {
     }
     if (!onTwisty) await selectCustomer(id);
     renderTree();
+    // zbalený (aj z prilepenej hlavičky) – ukázať ho, nie nechať strom odrolovaný ďaleko dole
+    if (!state.openCust.has(id)) treeNodeEl({ cust: id, job: null, rel: '' })?.scrollIntoView({ block: 'nearest' });
     return;
   }
 
@@ -277,7 +278,6 @@ async function selectCustomer(custId) {
 
 async function applySelection(sel) {
   leaveSimilar();
-  state.autoOpen = { custs: new Set(), jobs: new Set() };
   state.sel = sel;
   state.scope = 'job';
   state.selFile = null;
@@ -307,6 +307,86 @@ async function gotoJob(jobId, rel) {
   if (keepFile && state.files.some((x) => x.id === keepFile)) selectFile(keepFile, true);
 }
 
+// --- strom z klávesnice (keď je fokus v strome – po kliknutí doň) ---------------
+// ↑/↓ = posun (súbory sa načítajú s malým oneskorením), ← = zbaliť / na nadradený uzol,
+// → = rozbaliť / na prvý podriadený. Ako v Prieskumníkovi.
+function nodeSel(node) {
+  if (node.dataset.cust) return { cust: Number(node.dataset.cust), job: null, rel: '' };
+  const jobId = Number(node.dataset.job);
+  const f = findJob(jobId);
+  return { cust: f ? f.cust.id : null, job: jobId, rel: node.dataset.rel ?? '' };
+}
+
+function treeNodeEl(sel) {
+  return [...$('tree').querySelectorAll('.node')].find((n) => {
+    if (!sel.job) return Number(n.dataset.cust) === sel.cust;
+    return Number(n.dataset.job) === sel.job && (n.dataset.rel ?? '') === sel.rel;
+  }) || null;
+}
+
+function parentSel(sel) {
+  if (!sel.job) return null;
+  if (!sel.rel) return { cust: sel.cust, job: null, rel: '' };
+  const i = sel.rel.lastIndexOf('\\');
+  return { cust: sel.cust, job: sel.job, rel: i < 0 ? '' : sel.rel.slice(0, i) };
+}
+
+async function setTreeOpen(sel, open) {
+  if (!sel.job) {
+    open ? state.openCust.add(sel.cust) : state.openCust.delete(sel.cust);
+  } else if (!sel.rel) {
+    if (open) { state.openJobs.add(sel.job); await ensurePositions(sel.job); } else state.openJobs.delete(sel.job);
+  } else {
+    const key = `${sel.job}|${sel.rel}`;
+    open ? state.openDirs.add(key) : state.openDirs.delete(key);
+  }
+}
+
+const loadTreeSel = debounce((sel) => applySelection(sel), 250);
+
+// Presun výberu v strome z klávesnice – hneď zvýrazniť, súbory načítať až po zastavení
+function moveTreeTo(node) {
+  if (!node) return;
+  const sel = nodeSel(node);
+  state.sel = sel;
+  state.scope = 'job';
+  renderScope();
+  renderTree();
+  treeNodeEl(sel)?.scrollIntoView({ block: 'nearest' });
+  loadTreeSel(sel);
+}
+
+async function onTreeKey(e) {
+  if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+  e.preventDefault();
+  e.stopPropagation();   // šípky nech nepohnú zoznamom súborov
+  const nodes = [...$('tree').querySelectorAll('.node')];
+  if (!nodes.length) return;
+  const cur = state.scope === 'job' && state.sel ? treeNodeEl(state.sel) : null;
+  if (!cur) { moveTreeTo(nodes[0]); return; }
+  const i = nodes.indexOf(cur);
+  if (e.key === 'ArrowDown') { moveTreeTo(nodes[Math.min(nodes.length - 1, i + 1)]); return; }
+  if (e.key === 'ArrowUp') { moveTreeTo(nodes[Math.max(0, i - 1)]); return; }
+  if (e.key === 'Home') { moveTreeTo(nodes[0]); return; }
+  if (e.key === 'End') { moveTreeTo(nodes[nodes.length - 1]); return; }
+  const sel = nodeSel(cur);
+  const hasKids = cur.querySelector('.tw').innerHTML !== '';
+  const open = cur.classList.contains('open');
+  if (e.key === 'ArrowRight') {
+    if (!hasKids) return;
+    if (open) { moveTreeTo(nodes[i + 1]); return; }
+    await setTreeOpen(sel, true);
+    renderTree();
+  } else if (open && hasKids) {   // ←
+    await setTreeOpen(sel, false);
+    renderTree();
+    treeNodeEl(sel)?.scrollIntoView({ block: 'nearest' });
+  } else {
+    const p = parentSel(sel);
+    if (p) moveTreeTo(treeNodeEl(p));
+  }
+}
+
 // --- hľadanie čísla zákazky v strome ------------------------------------------
 // Číslo bez ohľadu na úvodné nuly: 'OD21750' = 'OD00021750', '9712' = '009712',
 // '100919' = zákazník '100919-Unitek…'. Vracia 'PREFIX:číslo' alebo null.
@@ -324,58 +404,93 @@ function idMatches(term, name) {
   return t.startsWith(':') && n !== null && n.endsWith(t);
 }
 
-const TREE_HITS_MAX = 10;   // pri viacerých zhodách sa strom nerozbaľuje (príliš všeobecné hľadanie)
+// --- menu zákaziek a zákazníkov pod hľadaním ----------------------------------
+// Pri čísle (od 3 číslic) ukáže zákazky/zákazníkov, ktorých číslo sedí – aj staré zákazky
+// u viacerých zákazníkov (000324 v OD067 aj v OD112). Enter / klik = otvoriť v strome.
+// Poradie: presné číslo (bez núl a predpony) → číslo na začiatku → kdekoľvek v názve.
+const FMENU_MAX = 12;
+let fmenu = { items: [], more: 0, cur: 0 };
 
-// Zákazky/zákazníci, ktorých číslo sedí s niektorým hľadaným slovom → rozbaliť a zvýrazniť v strome
-async function revealTreeHits() {
-  state.hitJobs = new Set();
-  state.hitCusts = new Set();
-  // zbaliť, čo rozbalilo predchádzajúce hľadanie (okrem cesty k vybranej zákazke)
-  for (const id of state.autoOpen.custs) if (!state.sel || state.sel.cust !== id) state.openCust.delete(id);
-  for (const id of state.autoOpen.jobs) if (!state.sel || state.sel.job !== id) state.openJobs.delete(id);
-  state.autoOpen = { custs: new Set(), jobs: new Set() };
-  const autoOpen = (set, auto, id) => { if (!set.has(id)) { set.add(id); auto.add(id); } };
-  const terms = state.similar ? [] : state.q.split(/\s+/).filter((t) => t && !/[*?]/.test(t) && /\d{3}/.test(t));
-  if (terms.length) {
-    const jobs = [];
-    for (const c of state.tree) {
-      // zákazník podľa čísla pred pomlčkou ('100919-Unitek…')
-      if (terms.some((t) => idMatches(t, c.name.split('-')[0]))) state.hitCusts.add(c.id);
-      for (const j of c.jobs) if (terms.some((t) => idMatches(t, j.name))) jobs.push({ c, j });
-    }
-    if (jobs.length > TREE_HITS_MAX) jobs.length = 0;
-    if (state.hitCusts.size > TREE_HITS_MAX) state.hitCusts = new Set();
-    for (const { c, j } of jobs) {
-      state.hitJobs.add(j.id);
-      autoOpen(state.openCust, state.autoOpen.custs, c.id);
-    }
-    if (jobs.length === 1) {   // jediná zákazka – ukázať aj jej priečinky
-      autoOpen(state.openJobs, state.autoOpen.jobs, jobs[0].j.id);
-      await ensurePositions(jobs[0].j.id);
-    }
-  }
-  renderTree();
-  const first = $('tree').querySelector('.node.hit');
-  if (first) first.scrollIntoView({ block: 'center' });
+function idRank(term, name) {
+  if (idMatches(term, name)) return 0;
+  const t = normId(term);
+  const n = normId(name);
+  if (t && n && (t.startsWith(':') ? n.slice(n.indexOf(':') + 1).startsWith(t.slice(1)) : n.startsWith(t))) return 1;
+  return name.toLowerCase().includes(term.toLowerCase()) ? 2 : 9;
 }
 
-// Enter v hľadaní: jediná nájdená zákazka (alebo zákazník) sa otvorí celá
-async function openTreeHit() {
-  if (state.hitJobs.size === 1) {
-    const id = [...state.hitJobs][0];
-    clearSearchQuiet();
-    await gotoJob(id, '');
-    return true;
+function folderHits() {
+  const terms = state.similar ? [] : state.q.split(/\s+/).filter((t) => t && !/[*?]/.test(t) && /\d{3}/.test(t));
+  if (!terms.length) return { items: [], more: 0 };
+  const best = (name) => Math.min(...terms.map((t) => idRank(t, name)));
+  const cmp = (a, b) => a.r - b.r || a.name.localeCompare(b.name, 'sk', { numeric: true });
+  const hits = [];
+  for (const c of state.tree) {
+    // zákazník podľa čísla pred pomlčkou ('100919-Unitek…'), inak časť názvu
+    const rc = Math.min(best(c.name.split('-')[0]), best(c.name));
+    if (rc < 9) hits.push({ kind: 'cust', r: rc, name: c.name, c });
+    for (const j of c.jobs) {
+      const r = best(j.name);
+      if (r < 9) hits.push({ kind: 'job', r, name: j.name, c, j });
+    }
   }
-  if (state.hitJobs.size === 0 && state.hitCusts.size === 1) {
-    const id = [...state.hitCusts][0];
-    clearSearchQuiet();
-    state.openCust.add(id);
-    await selectCustomer(id);
+  hits.sort((a, b) => cmp(a, b) || (a.kind === 'job' ? -1 : 1));
+  const shown = hits.slice(0, FMENU_MAX);
+  // zobrazenie po skupinách: najprv zákazky, potom zákazníci (v rámci skupiny poradie podľa zhody)
+  const items = [...shown.filter((h) => h.kind === 'job'), ...shown.filter((h) => h.kind === 'cust')];
+  return { items, more: hits.length - shown.length };
+}
+
+function updateFolderMenu() {
+  const { items, more } = folderHits();
+  fmenu = { items, more, cur: 0 };
+  if (!items.length || document.activeElement !== $('q')) { closeFolderMenu(); return; }
+  renderFolderMenu();
+}
+
+function renderFolderMenu() {
+  const box = $('fmenu');
+  const out = [];
+  let last = '';
+  fmenu.items.forEach((h, i) => {
+    if (h.kind !== last) {
+      out.push(`<div class="fm-head">${h.kind === 'job' ? 'Zákazky' : 'Zákazníci'}</div>`);
+      last = h.kind;
+    }
+    const sub = h.kind === 'job' ? `<span class="fm-sub">${esc(h.c.name)}</span>${complStatus(h.j.missing)}`
+      : `<span class="fm-sub">${h.c.jobs.length} ${h.c.jobs.length === 1 ? 'zákazka' : h.c.jobs.length >= 2 && h.c.jobs.length <= 4 ? 'zákazky' : 'zákaziek'}</span>`;
+    out.push(`<button type="button" class="dd-item fm-item${i === fmenu.cur ? ' cur' : ''}" data-i="${i}" tabindex="-1">
+      <span class="nm">${highlight(h.name)}</span>${sub}</button>`);
+  });
+  if (fmenu.more) out.push(`<div class="fm-more">… a ďalších ${fmenu.more} – spresni hľadanie</div>`);
+  out.push('<div class="fm-hint">Enter = otvoriť v strome · ↑↓ výber · Esc zavrieť</div>');
+  box.innerHTML = out.join('');
+  const r = document.querySelector('.search').getBoundingClientRect();
+  box.style.left = `${r.left}px`;
+  box.style.top = `${r.bottom + 4}px`;
+  box.style.width = `${r.width}px`;
+  box.hidden = false;
+  box.querySelector('.fm-item.cur')?.scrollIntoView({ block: 'nearest' });
+}
+
+function closeFolderMenu() {
+  $('fmenu').hidden = true;
+}
+
+// Otvorí zákazku / zákazníka z menu v strome (hľadanie sa vymaže)
+async function chooseFolder(i) {
+  const h = fmenu.items[i];
+  if (!h) return;
+  closeFolderMenu();
+  clearSearchQuiet();
+  if (h.kind === 'job') {
+    await gotoJob(h.j.id, '');
+  } else {
+    state.openCust.add(h.c.id);
+    await selectCustomer(h.c.id);
     renderTree();
-    return true;
+    treeNodeEl({ cust: h.c.id, job: null, rel: '' })?.scrollIntoView({ block: 'center' });
   }
-  return false;
 }
 
 // --- kontextové menu stromu (pravé tlačidlo) --------------------------------
@@ -635,7 +750,7 @@ function renderHead() {
     // nadpis = zákazka, podpriečinok menším sivým písmom za lomkou
     const rel = state.sel.rel;
     crumb = f.cust.name;
-    heading = esc(f.job.name) + (rel ? `<span class="h-sub"> / ${esc(rel.split('\\').join(' \\ '))}</span>` : '');
+    heading = esc(f.job.name) + (rel ? `<span class="h-sub"> \\ ${esc(rel.split('\\').join(' \\ '))}</span>` : '');
   } else {
     heading = 'Vyber zákazku';
   }
@@ -967,6 +1082,7 @@ async function openFolder(id) {
 function bind() {
   $('tree').addEventListener('click', onTreeClick);
   $('tree').addEventListener('contextmenu', onTreeContext);
+  $('tree').addEventListener('keydown', onTreeKey);
   $('treeExpand').addEventListener('click', () => {
     // rozbalí len zákazníkov (zákazky so všetkými priečinkami by pri tisícoch zákaziek boli priveľa)
     state.tree.forEach((c) => state.openCust.add(c.id));
@@ -988,7 +1104,7 @@ function bind() {
   window.addEventListener('blur', hideCtx);
 
   // hľadanie
-  const runSearch = debounce(() => { refresh(); revealTreeHits(); }, 200);
+  const runSearch = debounce(() => { refresh(); updateFolderMenu(); }, 200);
   $('q').addEventListener('input', () => {
     state.q = $('q').value.trim();
     $('qClear').hidden = !$('q').value;
@@ -996,13 +1112,35 @@ function bind() {
     runSearch();
   });
   $('q').addEventListener('keydown', async (e) => {
-    if (e.key === 'Escape') clearSearch();
-    if (e.key === 'Enter' && (state.hitJobs.size || state.hitCusts.size)) {
+    const menu = !$('fmenu').hidden;
+    if (e.key === 'Escape') {
+      if (menu) closeFolderMenu(); else clearSearch();   // prvé Esc zavrie menu, druhé vymaže
+      e.stopPropagation();
+      return;
+    }
+    if (!menu) return;
+    // otvorené menu zákaziek: šípky a Enter patria jemu (nie zoznamu súborov)
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      e.stopPropagation();
+      const n = fmenu.items.length;
+      fmenu.cur = (fmenu.cur + (e.key === 'ArrowDown' ? 1 : -1) + n) % n;
+      renderFolderMenu();
+    } else if (e.key === 'Enter') {
       e.preventDefault();
       e.stopPropagation();   // inak by Enter otvoril vybraný súbor
-      await openTreeHit();
+      await chooseFolder(fmenu.cur);
     }
   });
+  // menu zákaziek: klik (mousedown, aby pole hľadania nestratilo fokus skôr)
+  $('fmenu').addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const b = e.target.closest('.fm-item');
+    if (b) chooseFolder(Number(b.dataset.i));
+  });
+  $('q').addEventListener('focus', () => { if (state.q) updateFolderMenu(); });
+  $('q').addEventListener('blur', closeFolderMenu);
+  window.addEventListener('resize', closeFolderMenu);
   $('qClear').addEventListener('click', () => { clearSearch(); $('q').focus(); });
 
   // filtre
@@ -1445,17 +1583,16 @@ async function prepareDb() {
 function clearSearch() {
   $('q').value = '';
   $('qClear').hidden = true;
+  closeFolderMenu();
   if (state.q) { state.q = ''; refresh(); }
-  if (state.hitJobs.size || state.hitCusts.size) revealTreeHits();
 }
 
 // Vymaže hľadanie bez obnovenia zoznamu (obnoví ho nasledujúci výber v strome)
 function clearSearchQuiet() {
   $('q').value = '';
   $('qClear').hidden = true;
+  closeFolderMenu();
   state.q = '';
-  state.hitJobs = new Set();
-  state.hitCusts = new Set();
 }
 
 // Chyba pri štarte (napr. DB sa nedá otvoriť) – ukázať v okne, nie nechať prázdne

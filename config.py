@@ -92,25 +92,28 @@ FULL_EVERY_DAYS = 7  # scanner --auto: úplný sken, ak posledný bol pred viac 
 # ---------------------------------------------------------------------------
 FILE_TYPES = {
     "PDF": ("Výkres", ["pdf"], "#fee2e2", "#7f1d1d"),
-    "MODEL": ("3D model", ["stp", "step", "igs", "iges", "x_t", "x_b", "stl"], "#dbeafe", "#1e3a8a"),
+    "MODEL": ("3D model", ["stp", "step", "igs", "iges", "x_t", "x_b", "stl", "catpart", "catproduct", "meg"],
+              "#dbeafe", "#1e3a8a"),
     "HMC": ("hyperMILL", ["hmc"], "#ffedd5", "#7c2d12"),
-    "PPF": ("hyperMILL", ["ppf"], "#fef3c7", "#78350f"),
-    "NC": ("NC program", ["h", "nc", "mpf", "spf", "wpd", "eia", "nd1", "nd2", "arc"], "#dcfce7", "#14532d"),
+    "ECAM": ("Edgecam", ["ppf"], "#fef3c7", "#78350f"),
+    "NC": ("NC program", ["h", "nc", "mpf", "spf", "wpd", "eia", "nd1", "nd2", "arc", "dmg"],
+           "#dcfce7", "#14532d"),
     "XLS": ("Excel – CNC listy", ["xlsx", "xlsm", "xls"], "#ccfbf1", "#134e4a"),
     "DOC": ("Word", ["doc", "docx"], "#e0e7ff", "#312e81"),
-    "CREO": ("Creo", ["prt", "drw", "asm"], "#f9ded3", "#8a3517"),
+    "CREO": ("Creo (cgm = zjednodušený výkres)", ["prt", "drw", "asm", "cgm"], "#f9ded3", "#8a3517"),
     "DWG": ("AutoCAD", ["dwg", "dxf"], "#ede9fe", "#4c1d95"),
     "OBR": ("Obrázok / sken", ["tif", "tiff", "jpg", "jpeg", "png", "bmp", "gif", "webp", "heic"],
             "#fce7f3", "#831843"),
     "TXT": ("Poznámky", ["txt"], "#ecfccb", "#365314"),
     "MAIL": ("E-mail", ["msg", "eml"], "#fae8ff", "#86198f"),
+    "ZIP": ("Archív", ["zip", "rar", "7z"], "#e7e5e4", "#44403c"),
 }
 
 # Kontrola úplnosti zákazky: (názov, typy, prípony) – stačí ktorýkoľvek typ alebo prípona
 COMPLETENESS = [
-    ("Model", ["MODEL", "CREO"], ["catpart"]),
+    ("Model", ["MODEL", "CREO"], []),
     ("PDF", ["PDF"], []),
-    ("CAM", ["HMC", "PPF"], []),
+    ("CAM", ["HMC", "ECAM"], []),
     ("NC", ["NC"], []),
     ("Listy", ["XLS", "DOC"], []),
 ]
@@ -139,16 +142,19 @@ def ftype_for_ext(ext: str) -> str:
 # ---------------------------------------------------------------------------
 # Čo skener preskakuje (porovnáva sa bez ohľadu na veľkosť písmen)
 # ---------------------------------------------------------------------------
-# Priečinky kdekoľvek v strome (interné dáta hyperMILL a pod.)
-IGNORE_DIRS = {"pof", "vnc", "stock", "3df"}
+# Priečinky kdekoľvek v zákazke – interné dáta hyperMILL (POF111, pof2…). Vzory fnmatch, malými.
+IGNORE_DIRS = ["pof*", "vnc", "stock", "3df", "def", "geo"]
 # Priečinky na 1. úrovni koreňa, ktoré nie sú zákazníci
 IGNORE_ROOT_DIRS = {"_lupa", "$recycle.bin", "system volume information"}
 # Konkrétne názvy súborov
 IGNORE_FILES = {"thumbs.db", "desktop.ini"}
-# Prípony súborov (dep = Heidenhain PROG.H.T.DEP, err/out = std.err/std.out)
-IGNORE_EXTS = {"bak", "hmc_bak", "hypermill", "dwl", "dwl2", "log", "tmp", "out", "err", "dep"}
-# Vzory názvov (fnmatch, malými písmenami) – logy z exportu Creo, trail a sekcie Creo (s2d0001.sec.1)
-IGNORE_GLOBS = ["*.log.*", "*_log.xml", "trail.txt*", "*.sec", "*.sec.*"]
+# Prípony súborov (dep = Heidenhain PROG.H.T.DEP, err/out = std.err/std.out,
+# pof/rsf/idx/xpr/m_p/crc = hyperMILL a pod., pro = lokálna konfigurácia Creo)
+IGNORE_EXTS = {"bak", "hmc_bak", "hypermill", "dwl", "dwl2", "log", "tmp", "out", "err", "dep",
+               "pof", "rsf", "idx", "xpr", "m_p", "crc", "pro"}
+# Vzory názvov (fnmatch, malými písmenami) – logy z exportu Creo, trail, sekcie a ďalšie
+# pomocné súbory Creo s číslom verzie (s2d0001.sec.1, xx.frm.1, gen3.lsl.2, global_intf.inf.6)
+IGNORE_GLOBS = ["*.log.*", "*_log.xml", "trail.txt*", "*.sec", "*.sec.*", "*.frm.*", "*.lsl.*", "*.inf.*"]
 
 
 def is_ignored(name: str, ext: str) -> bool:
@@ -156,3 +162,9 @@ def is_ignored(name: str, ext: str) -> bool:
     low = name.lower()
     return (low in IGNORE_FILES or ext in IGNORE_EXTS
             or any(fnmatch.fnmatchcase(low, g) for g in IGNORE_GLOBS))
+
+
+def is_ignored_dir(name: str) -> bool:
+    """Priečinok v zákazke, ktorý skener preskakuje (aj s obsahom)."""
+    low = name.lower()
+    return any(fnmatch.fnmatchcase(low, g) for g in IGNORE_DIRS)

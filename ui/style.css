@@ -243,6 +243,29 @@ select {
 .dd-sep { border-top: 1px solid var(--line); margin: 4px 4px; }
 .dd-empty { padding: 8px 10px; color: var(--muted); font-size: 12px; }
 
+/* menu zákaziek / zákazníkov pod hľadaním (číslo zákazky) */
+.fmenu {
+  position: fixed;
+  z-index: 60;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(17, 24, 39, .18);
+}
+.fm-head { padding: 6px 10px 2px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.fm-item .nm { flex: none; min-width: 120px; font-family: var(--mono); font-size: 13px; }
+.fm-item .fm-sub { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
+.fm-item .st { font-size: 11px; font-weight: 600; white-space: nowrap; }
+.fm-item .st.ok { color: #15803d; }
+.fm-item .st.miss { color: #b45309; }
+.fm-item .st::before { content: "\25CF"; margin-right: 3px; font-size: 9px; vertical-align: 1px; }
+.fm-item.cur { background: var(--accent-soft); }
+.fm-more, .fm-hint { padding: 6px 10px; font-size: 11px; color: var(--muted); }
+.fm-hint { border-top: 1px solid var(--line-soft); margin-top: 4px; }
+
 .linkbtn {
   border: 0;
   background: none;
@@ -375,7 +398,12 @@ body.resizing iframe, body.resizing .layout { pointer-events: none; }
 body.resizing .resizer.drag, body.resizing .col-grip.drag { pointer-events: auto; }
 
 /* --- strom --- */
-.tree { display: flex; flex-direction: column; gap: 1px; }
+.tree, .cgroup { display: flex; flex-direction: column; gap: 1px; }
+.tree:focus { outline: none; }
+/* otvorený zákazník sa pri rolovaní jeho zákaziek drží hore (dá sa hneď zbaliť) */
+.cgroup > .node.cust.open { position: sticky; top: -8px; z-index: 2; }
+.cgroup > .node.cust.open:not(.sel):not(:hover) { background: #f9fafb; }
+.cgroup > .node:not(.cust) { scroll-margin-top: 30px; }   /* scrollIntoView nepod prilepeného zákazníka */
 .node {
   display: flex;
   align-items: center;
@@ -389,10 +417,6 @@ body.resizing .resizer.drag, body.resizing .col-grip.drag { pointer-events: auto
 }
 .node:hover { background: #eef2f7; }
 .node.sel { background: #dbeafe; color: #1e3a8a; font-weight: 600; }
-/* zákazka / zákazník nájdený hľadaním čísla – rovnaká žltá ako <mark> v zozname */
-.node.hit { background: #fef9c3; box-shadow: inset 3px 0 0 #eab308; font-weight: 600; }
-.node.hit:hover { background: #fef08a; }
-.node.hit.sel { background: #dbeafe; box-shadow: inset 3px 0 0 #eab308; }
 .node .tw {
   width: 16px;
   flex: none;

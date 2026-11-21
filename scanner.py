@@ -281,6 +281,12 @@ class Scanner:
             ids = [(r[0],) for r in self.con.execute("SELECT id, name FROM files")
                    if any(fnmatch.fnmatchcase(r[1].lower(), g) for g in slow)]
             n += self.con.executemany("DELETE FROM files WHERE id = ?", ids).rowcount
+        # preskakované priečinky (POF*, GEO…) – zo stromu zmiznú aj so súbormi
+        pids = [(r[0],) for r in self.con.execute("SELECT id, rel_path FROM positions WHERE rel_path <> ''")
+                if any(config.is_ignored_dir(part) for part in r[1].split("\\"))]
+        if pids:
+            n += self.con.executemany("DELETE FROM files WHERE position_id = ?", pids).rowcount
+            self.con.executemany("DELETE FROM positions WHERE id = ?", pids)
         self.con.commit()
         return n
 
@@ -320,7 +326,7 @@ class Scanner:
         if entries is None:
             return  # priečinok zákazníka sa nedá čítať – v DB nič nemeniť
         for entry in entries:
-            if not is_dir(entry) or entry.name.lower() in config.IGNORE_DIRS:
+            if not is_dir(entry) or config.is_ignored_dir(entry.name):
                 continue
             path = to_short(entry.path)
             seen.add(path)
@@ -378,7 +384,7 @@ class Scanner:
             for entry in entries:
                 name = entry.name
                 if is_dir(entry):
-                    if name.lower() not in config.IGNORE_DIRS:
+                    if not config.is_ignored_dir(name):
                         subdirs.append((entry.path, f"{rel}\\{name}" if rel else name))
                     continue
                 ext, ver = split_ext(name)
