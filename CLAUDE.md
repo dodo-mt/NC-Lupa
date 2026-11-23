@@ -132,13 +132,13 @@ prints(path, size, modified, version, views)   -- odtlačky PDF, views = odtlack
 - Hľadanie podľa časti názvu: `LIKE '%…%'` (pri raste zvážiť FTS5).
 - Odhad veľkosti: ~150 000 súborov → desiatky MB.
 
-## Stav projektu (aktuálne 1.3.9)
+## Stav projektu (aktuálne 1.4.0)
 
 Hotové: verzia 1 (nižšie) + náhľady, galéria, NC/TXT náhľad, kontrola úplnosti, exe, ikona skenu
 pri hodinách, stavový riadok, kontextové menu stromu, podobné výkresy, filter zákazníkov v `lupa.ini`,
 hľadanie čísla zákazky v strome, typy XLS/DOC zvlášť,
 lokálna kópia DB, spúšťač, nové typy, odkazy .lnk, menu zákaziek pod hľadaním (1.3.2).
-Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`, `v1.3.0`, `v1.3.1`, `v1.3.2`, `v1.3.3`, `v1.3.4`, `v1.3.6`, `v1.3.7`, `v1.3.9` (pushnuté na GitHub `origin/main`).
+Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`, `v1.3.0`, `v1.3.1`, `v1.3.2`, `v1.3.3`, `v1.3.4`, `v1.3.6`, `v1.3.7`, `v1.3.9`, `v1.4.0` (pushnuté na GitHub `origin/main`).
 
 **Ostré nasadenie (20.11.2026)**: DB `L:\_Lupa\lupa.db` na sieťovom disku (~180 MB).
 Prvý úplný sken L:\ (ešte skener 1.0 na inom PC) – ~1 h, 33 600+ zákaziek / 237 zákazníkov, bez chýb.
@@ -181,7 +181,7 @@ rozmery zo STP by sa hodili k podobným výkresom.
 používateľ ich skúša v práci. Návrh na neskôr (neschválený): celá strana Wordu = prvá strana PDF s rovnakým
 menom v tom istom priečinku (ak existuje), inak súčasný obrázok; vykresľovanie cez Word COM radšej nie.
 
-**Rozpracované (23.11.2026)**: **stroje zákazky** (`stroje.py`, `Api.get_machines`) – štítky za úplnosťou
+**1.4.0 (23.11.2026)**: **stroje zákazky** (`stroje.py`, `Api.get_machines`) – štítky za úplnosťou
 (každý stroj raz, bublinka = počet súborov, hlavička, listy). Číta Lupa pri kliknutí na zákazku (cache
 v pamäti), nie skener. Zdroje: 1. hlavička NC (prvé 4 kB, riadok `STROJ:`), bez nej znak WFL
 (`MACHINE_SIGNS`: `_N_WKS_DIR`, `TLCH1(`) alebo prípona (`.eia` = Mazak, `.wpd` = WFL);
@@ -197,6 +197,8 @@ Oprava: riadok odkazov `.links[hidden]` ostával viditeľný pri zákazke bez od
 GetFileSecurity cez sieť). `Api.get_new_jobs(days)`; menu 1 / 3 / 7 / 14 dní (`lupa.bell.days`),
 číslo = nevidené (`lupa.bell.seen` = najnovšia videná, otvorením menu zmizne). Po zverejnení novej DB
 sa zvonček načíta hneď. Treba nový skener (`ikona_skenu.bat`); stará DB = zvonček skrytý.
+Návrh (neschválený): v zvončeku aj „Robí“ = vlastníci HMC / ECAM / NC / listov v zákazke (priečinok
+zakladá šéf, programuje sa neskôr), prípadne prepínač „len moje“.
 
 **Na rade (21.11.2026)**:
 - Pomalý štart (16 s cez sieť – meranie `zmeraj_start.py`: počet odtlačkov 8,3 s, úplnosť 4,7 s) →
