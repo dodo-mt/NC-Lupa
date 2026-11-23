@@ -135,6 +135,37 @@ def list_sql(f: str = "f", doclists: bool = True) -> tuple[str, list]:
     return listy.list_sql(LIST_RULES, f, doclists)
 
 
+# Stroje zákazky (stroje.py): text za „STROJ:“ v hlavičke NC programu / nástrojového listu
+# -> skratka. Prvé pravidlo, ktoré sedí (regulárny výraz, veľké písmená nerozhodujú).
+# Neznámy stroj sa ukáže tak, ako je v hlavičke – doplň sem pravidlo.
+MACHINES = [
+    (r"DMU\s*75|monoBLOCK.*840D", "mono 840D"),
+    (r"DMU\s*65|monoBLOCK", "mono H640"),
+    (r"DMU\s*(80|85)\s*eVo", "eVo 80"),
+    (r"DMU\s*60\s*eVo", "eVo 60"),
+    (r"DMC\s*(80\s*-\s*)?160", "DMC 160"),
+    (r"DMC\s*105", "DMC 105"),
+    (r"3x-HH", "H530 3x"),
+    (r"Kaoming", "Kaoming"),
+    (r"HPM\s*450", "HPM 450"),
+    (r"GMX", "Gmx"),
+    (r"NTX", "NTX"),
+    (r"J-?200", "J200"),
+    (r"IG-?400|i-?400", "IG400"),
+    (r"Mazak|Integrex", "Mazak"),
+    (r"WFL", "WFL"),
+]
+# NC prípony bez hlavičky -> stroj
+MACHINE_EXTS = {"eia": "Mazak"}
+# Spresnenie podľa mena CNC listu v zákazke (Excel, ak tam nič, tak PDF / Word):
+# stroj -> [(vzor v mene, skratka)]; None = pridať vždy (stroj bez hlavičky).
+MACHINE_HINTS = {
+    "Gmx": [(r"gamma", "Gamma"), (r"gmx", "Gmx")],             # rovnaký program, iný stroj
+    "Mazak": [(r"j-?200", "J200"), (r"ig-?400", "IG400")],      # .eia bez hlavičky
+    None: [(r"(?<![a-z])wfl(?![a-z])", "WFL")],                 # sústruh WFL nemá hlavičku
+}
+
+
 def missing_parts(ftypes: set, exts: set) -> list[str]:
     """Názvy položiek úplnosti, ktoré v zákazke chýbajú."""
     return [

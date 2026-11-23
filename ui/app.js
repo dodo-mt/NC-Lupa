@@ -821,6 +821,38 @@ async function renderLinks(jobId) {
   box.hidden = false;
 }
 
+// --- stroje zákazky (hlavičky NC programov, Api.get_machines) ---------------------
+// Štítky za úplnosťou: každý stroj raz (5× eVo 80 = jeden štítok), v bublinke počet a hlavičky.
+const jobMachines = new Map();   // jobId -> [{name, n, raw, files, by_list}]
+const ICON_MACHINE = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="14" rx="1.5"></rect><path d="M12 7v6M9 13h6M7 21h10M12 17v4"></path></svg>';
+
+function machineTip(m) {
+  const lines = [];
+  if (m.n) lines.push(`${m.n} ${m.n === 1 ? 'súbor' : m.n <= 4 ? 'súbory' : 'súborov'} (NC programy, nástrojové listy)`);
+  if (m.by_list) lines.push('Podľa mena CNC listu v zákazke');
+  if (m.raw.length) lines.push('Hlavička: ' + m.raw.join(' · '));
+  if (m.files.length) lines.push(m.files.join('\n') + (m.n > m.files.length ? '\n…' : ''));
+  return lines.join('\n');
+}
+
+async function renderMachines(jobId) {
+  const box = $('machines');
+  box.dataset.job = jobId || '';
+  if (!jobId) { box.hidden = true; return; }
+  if (!jobMachines.has(jobId)) {
+    box.hidden = true;
+    let r;
+    try { r = await api.get_machines(jobId); } catch (e) { r = null; }
+    jobMachines.set(jobId, r || []);
+    if (box.dataset.job !== String(jobId)) return;   // medzitým iný výber
+  }
+  const list = jobMachines.get(jobId);
+  if (!list.length) { box.hidden = true; return; }
+  box.innerHTML = ICON_MACHINE +
+    list.map((m) => `<span title="${esc(machineTip(m))}">${esc(m.name)}</span>`).join('');
+  box.hidden = false;
+}
+
 function renderHead() {
   const all = state.scope === 'all';
   const f = state.sel && state.sel.job ? findJob(state.sel.job) : null;
@@ -852,6 +884,7 @@ function renderHead() {
   if ($('simClose')) $('simClose').onclick = () => exitSimilar();
   renderCompl();
   renderLinks(f && !state.similar && !all ? f.job.id : null);
+  renderMachines(f && !state.similar && !all ? f.job.id : null);
 
   const n = state.total;
   let cnt = '';
@@ -1866,6 +1899,7 @@ async function reloadData() {
     dbTag = (await api.check_updates()).db;
     state.positions = {};
     jobLinks.clear();
+    jobMachines.clear();
     const custIds = new Set(state.tree.map((c) => c.id));
     const jobIds = new Set(state.tree.flatMap((c) => c.jobs.map((j) => j.id)));
     state.openCust = new Set([...state.openCust].filter((id) => custIds.has(id)));

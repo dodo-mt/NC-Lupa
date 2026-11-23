@@ -499,7 +499,19 @@ body.resizing .resizer.drag, body.resizing .col-grip.drag { pointer-events: auto
   border-radius: 4px;
 }
 .compl .y { background: #dcfce7; color: #14532d; }
-.compl .n { background: #fef3c7; color: #78350f; }.children { display: flex; flex-direction: column; gap: 1px; }
+.compl .n { background: #fef3c7; color: #78350f; }
+/* stroje zákazky (hlavičky NC programov) – za úplnosťou */
+.machines { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.machines[hidden] { display: none; }
+.machines > svg { flex: none; color: var(--muted); }
+.machines span {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: #f3f4f6;
+  color: #374151;
+}.children { display: flex; flex-direction: column; gap: 1px; }
 
 /* --- zoznam --- */
 .list-head {
@@ -802,6 +814,7 @@ td.c-sim { white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 /* odkazy .lnk medzi zákazkami – „Odkazuje na“ (nová → stará), „Odkazujú sem“ (stará ← nová) */
 .links { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; font-size: 12px; color: var(--muted); }
+.links[hidden] { display: none; }
 .bl-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .bl-row > svg { flex: none; color: var(--accent); }
 .bl-row.from > svg { transform: scaleX(-1); }

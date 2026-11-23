@@ -343,6 +343,15 @@ class Api:
         order = lambda h: -(h["changed"] or 0)
         return {"to": sorted(to.values(), key=order), "from": sorted(frm.values(), key=order)}
 
+    def get_machines(self, job_id: int) -> list[dict]:
+        """Stroje zákazky z hlavičiek NC programov (stroje.py) – štítky za úplnosťou."""
+        import stroje
+        nc = self._q("SELECT name, ext, path, size, modified FROM files"
+                     " WHERE job_id = ? AND ftype = 'NC' ORDER BY modified DESC", (job_id,))
+        docs = self._q("SELECT name, ext FROM files WHERE job_id = ? AND ftype IN ('XLS', 'PDF', 'DOC')",
+                       (job_id,))
+        return stroje.job_machines(nc, docs)
+
     def copy_text(self, text: str) -> dict:
         """Do schránky Windows (clipboard API prehliadača v okne nemusí byť povolené)."""
         try:

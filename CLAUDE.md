@@ -177,6 +177,18 @@ ale vykreslil len 17/47 vzoriek (zlyháva sieť trojuholníkov hlavne pri dieloc
 limity), +86 MB. Ak znova: priamo OpenCascade (`cadquery-ocp`, BRepMesh – spoľahlivejšie, ~+150 MB);
 rozmery zo STP by sa hodili k podobným výkresom.
 
+**Rozpracované (23.11.2026)**: náhľady Word / Excel (`dokument.py`, `thumbs.py`) – len lokálne, necommitnuté,
+používateľ ich skúša v práci. Návrh na neskôr (neschválený): celá strana Wordu = prvá strana PDF s rovnakým
+menom v tom istom priečinku (ak existuje), inak súčasný obrázok; vykresľovanie cez Word COM radšej nie.
+
+**Rozpracované (23.11.2026)**: **stroje zákazky** (`stroje.py`, `Api.get_machines`) – štítky za úplnosťou
+(každý stroj raz, bublinka = počet súborov + hlavička). Číta Lupa pri kliknutí na zákazku (prvé 4 kB NC
+súborov, riadok `STROJ:`, cache v pamäti), nie skener. Skratky `config.MACHINES` (eVo 80, mono H640,
+mono 840D, DMC 160/105, H530 3x, Kaoming, HPM 450, Gmx, NTX, J200, IG400, Mazak), bez hlavičky
+`.eia` = Mazak; spresnenie menom CNC listu (`MACHINE_HINTS`, najprv Excel, potom PDF/Word):
+GMX → Gamma / Gmx, Mazak → J200 / IG400, `WFL` v mene → WFL. Neznámy stroj = text z hlavičky.
+Oprava: riadok odkazov `.links[hidden]` ostával viditeľný pri zákazke bez odkazov.
+
 **Na rade (21.11.2026)**:
 - Pomalý štart (16 s cez sieť – meranie `zmeraj_start.py`: počet odtlačkov 8,3 s, úplnosť 4,7 s) →
   lokálna kópia DB + pásik priebehu (overené, ~5 s – zvyšok bol štart onefile exe) → spúšťač + onedir
@@ -201,6 +213,18 @@ rozmery zo STP by sa hodili k podobným výkresom.
    `build.py` ho stiahne do `tools\libredwg\` – mimo gitu – a overí SHA-256) do `%LOCALAPPDATA%\Lupa\tmp`.
    Kreslí sa len veľký náhľad, galéria dostane zmenšeninu; veľký výkres aj ~15 s (potom z cache).
    Nevykreslený výkres → náhľad/ikona z Windows. Vo vzorkách 17/17 (aj staré DWG R14).
+   **Word / Excel** (`dokument.py`): náhľad = obrázok vložený v dokumente (CNC listy majú fotky upnutia
+   a snímky z CAM). .docx/.xlsx z ZIP-u (`media/`), staré .doc/.xls – PNG/JPEG nájdené v súbore (JPEG:
+   prvý dekódovateľný koniec FF D9). Vyberie sa obrázok s najviac farebného modelu (logo – široký nízky –
+   a ikony von); snímka obrazovky sa oreže na model: najväčšia svetlá jednoliata plocha (políčka 12 px)
+   = 3D okno CAM-u, v nej najväčší zhluk (+15 % okraj). Vo Worde je orez len nastavenie, súbor má celú
+   snímku (aj 2 monitory 3840×1080) – tá sa skúša aj **po monitoroch** (model býva len na jednom);
+   neorezaný monitor / celá snímka majú malú váhu (0,15 / 0,1). Do skóre sa nepočíta „systémová“ modrá
+   (plocha Windows, panely Wordu: R < 70, B − R > 80) – inak by vyhrala plocha s kalkulačkou.
+   Výrez: `set_origin(0, 0)`, inak ďalší orez / zmenšenie číta mimo (šum). Vzorky: model/nákres 40/46,
+   snímka obrazovky bez modelu → ikona (4), hlavička listu na stránke Wordu ostáva (3, od nákresu na
+   bielom sa nedá odlíšiť); ~0,65 s na dokument (najviac 1,8 s),
+   potom cache (kľúč `o3`). Bez obrázka → ikona z Windows.
 2. ✅ **Galéria** – mriežka náhľadov, posuvník veľkosti, triedenie.
 3. ✅ Kontrola **úplnosti zákazky** (Model / PDF / CAM / NC / Listy) – stav v strome + štítky.
    **CNC list** (`listy.py` – jedno pravidlo pre skener, Lupu aj `skuska_listy.py`; štítok Listy aj
