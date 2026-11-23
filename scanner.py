@@ -318,9 +318,11 @@ class Scanner:
         known = {
             row[0]: row[1:]
             for row in self.con.execute(
-                "SELECT path, id, dir_mtime, last_change FROM jobs WHERE customer_id=?", (cid,)
+                "SELECT path, id, dir_mtime, last_change, created, added_by FROM jobs WHERE customer_id=?",
+                (cid,),
             )
         }
+        owner_cutoff = time.time() - config.NEW_JOBS_OWNER_DAYS * 86400
         seen = set()
         entries = self._scandir(long_path)
         if entries is None:
@@ -331,19 +333,29 @@ class Scanner:
             path = to_short(entry.path)
             seen.add(path)
             try:
-                mtime = entry.stat().st_mtime
+                st = entry.stat()
+                mtime = st.st_mtime
+                created = getattr(st, "st_birthtime", st.st_ctime)   # Windows: vytvorenie priečinka
             except OSError:
-                mtime = None
+                mtime = created = None
+            # kto zákazku pridal = vlastník priečinka; len pri mladých (GetFileSecurity cez sieť je pomalé)
+            by = None
             row = known.get(path)
+            if created and created >= owner_cutoff and (row is None or row[4] is None):
+                by = self.owners.get(entry.path)
             if row is None:
                 jid = self.con.execute(
-                    "INSERT INTO jobs(customer_id, name, path) VALUES (?,?,?)",
-                    (cid, entry.name, path),
+                    "INSERT INTO jobs(customer_id, name, path, created, added_by) VALUES (?,?,?,?,?)",
+                    (cid, entry.name, path, created, by),
                 ).lastrowid
                 self.new_jobs.append(entry.name)
                 need = True
             else:
-                jid, old_mtime, last_change = row
+                jid, old_mtime, last_change, old_created, old_by = row
+                if created and (old_created is None or abs(created - old_created) > 1 or by):
+                    self.con.execute("UPDATE jobs SET created=?, added_by=COALESCE(?, added_by) WHERE id=?",
+                                     (created, by, jid))
+                    self.changed = True
                 need = (
                     self.full
                     or mtime != old_mtime

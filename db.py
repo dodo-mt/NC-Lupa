@@ -18,7 +18,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     path        TEXT NOT NULL UNIQUE,
     dir_mtime   REAL,
     last_scan   REAL,
-    last_change REAL          -- najnovší mtime súboru/priečinka v zákazke
+    last_change REAL,         -- najnovší mtime súboru/priečinka v zákazke
+    created     REAL,         -- vytvorenie priečinka zákazky = kedy pribudla (zvonček „Nové zákazky“)
+    added_by    TEXT          -- vlastník priečinka zákazky (len pri nových, config.NEW_JOBS_OWNER_DAYS)
 );
 
 -- pozícia = skutočný priečinok v zákazke; koreň zákazky má rel_path ''
@@ -95,9 +97,11 @@ def open_rw(path: Path) -> sqlite3.Connection:
     # Žiadny WAL – DB bude neskôr na sieťovom disku, kde WAL nefunguje.
     con.executescript(SCHEMA)
     # DB zo starších verzií – doplniť stĺpce (CREATE IF NOT EXISTS existujúcu tabuľku nemení)
-    if "target" not in {r[1] for r in con.execute("PRAGMA table_info(files)")}:
-        con.execute("ALTER TABLE files ADD COLUMN target TEXT")
-        con.commit()
+    for table, col, typ in (("files", "target", "TEXT"), ("jobs", "last_change", "REAL"),
+                            ("jobs", "created", "REAL"), ("jobs", "added_by", "TEXT")):
+        if col not in {r[1] for r in con.execute(f"PRAGMA table_info({table})")}:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
+            con.commit()
     return con
 
 

@@ -343,14 +343,40 @@ class Api:
         order = lambda h: -(h["changed"] or 0)
         return {"to": sorted(to.values(), key=order), "from": sorted(frm.values(), key=order)}
 
+    def get_new_jobs(self, days: float = 1) -> dict:
+        """Zákazky pribudnuté za posledných `days` dní (vytvorenie priečinka) – zvonček.
+        ok = False: DB od staršieho skenera ešte nemá jobs.created."""
+        if not any(r["name"] == "created" for r in self._q("PRAGMA table_info(jobs)")):
+            return {"ok": False, "jobs": []}
+        since = time.time() - float(days) * 86400
+        rows = self._q(
+            "SELECT j.id, j.name, j.created, j.added_by, c.name AS customer FROM jobs j"
+            " JOIN customers c ON c.id = j.customer_id"
+            " WHERE j.created >= ? ORDER BY j.created DESC LIMIT 300", (since,))
+        return {"ok": True, "jobs": rows}
+
     def get_machines(self, job_id: int) -> list[dict]:
-        """Stroje zákazky z hlavičiek NC programov (stroje.py) – štítky za úplnosťou."""
+        """Stroje zákazky (stroje.py) – štítky za úplnosťou: hlavičky NC programov, mená a obsah
+        CNC listov; aj v cieľoch odkazov .lnk na staré heslá (zákazka často obsahuje len odkaz)."""
         import stroje
-        nc = self._q("SELECT name, ext, path, size, modified FROM files"
-                     " WHERE job_id = ? AND ftype = 'NC' ORDER BY modified DESC", (job_id,))
-        docs = self._q("SELECT name, ext FROM files WHERE job_id = ? AND ftype IN ('XLS', 'PDF', 'DOC')",
-                       (job_id,))
-        return stroje.job_machines(nc, docs)
+        sel = ("SELECT name, ext, path, size, modified, ftype FROM files"
+               " WHERE job_id = ? AND ftype IN ('NC', 'XLS', 'PDF', 'DOC')")
+
+        def split(rows):
+            rows.sort(key=lambda r: -(r["modified"] or 0))   # najnovšie prvé (limity v stroje.py)
+            return [r for r in rows if r["ftype"] == "NC"], [r for r in rows if r["ftype"] != "NC"]
+
+        links, seen = [], set()
+        for k in self._link_index():
+            if k["src"] != job_id or k["dst"] in (None, job_id) or k["target"].lower() in seen:
+                continue
+            seen.add(k["target"].lower())
+            t = k["target"].rstrip("\\")
+            like = t.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "\\%"
+            rows = self._q(sel + " AND (path = ? COLLATE NOCASE OR path LIKE ? ESCAPE '!')", (k["dst"], t, like))
+            if rows:
+                links.append((t, *split(rows)))
+        return stroje.job_machines(split(self._q(sel, (job_id,))), links)
 
     def copy_text(self, text: str) -> dict:
         """Do schránky Windows (clipboard API prehliadača v okne nemusí byť povolené)."""

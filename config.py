@@ -155,15 +155,28 @@ MACHINES = [
     (r"Mazak|Integrex", "Mazak"),
     (r"WFL", "WFL"),
 ]
-# NC prípony bez hlavičky -> stroj
-MACHINE_EXTS = {"eia": "Mazak"}
-# Spresnenie podľa mena CNC listu v zákazke (Excel, ak tam nič, tak PDF / Word):
-# stroj -> [(vzor v mene, skratka)]; None = pridať vždy (stroj bez hlavičky).
-MACHINE_HINTS = {
-    "Gmx": [(r"gamma", "Gamma"), (r"gmx", "Gmx")],             # rovnaký program, iný stroj
-    "Mazak": [(r"j-?200", "J200"), (r"ig-?400", "IG400")],      # .eia bez hlavičky
-    None: [(r"(?<![a-z])wfl(?![a-z])", "WFL")],                 # sústruh WFL nemá hlavičku
-}
+# Program bez riadku STROJ: -> stroj podľa obsahu začiatku súboru (prvé pravidlo, ktoré sedí)
+# WFL (Edgecam, Siemens): ;$PATH=/_N_WKS_DIR/…_WPD, výmena nástroja TLCH1(…)
+MACHINE_SIGNS = [
+    (r"_N_WKS_DIR|TLCH1\s*\(", "WFL"),
+]
+# NC prípony bez hlavičky aj bez znaku vyššie -> stroj
+MACHINE_EXTS = {"eia": "Mazak", "wpd": "WFL"}
+# Stroj podľa mena CNC listu v zákazke (Excel; ak tam nič, tak PDF / Word): (vzor v mene, skratka)
+MACHINE_NAMES = [
+    (r"gamma", "Gamma"),
+    (r"(?<![a-z])gmx", "Gmx"),
+    (r"j-?200", "J200"),
+    (r"ig-?400", "IG400"),
+    (r"mazak", "Mazak"),
+    (r"(?<![a-z])wfl(?![a-z])", "WFL"),
+]
+# Všeobecný stroj sa vynechá, keď je v zákazke presnejší (Mazak .eia + list MAZAK-IG400 = IG400)
+MACHINE_GENERIC = {"Mazak": ["J200", "IG400"]}
+# Rovnaký program pre viac strojov: hlavička GMX, ale listy hovoria len Gamma -> Gamma
+MACHINE_SAME_PROGRAM = {"Gmx": ["Gamma"]}
+NEW_JOBS_OWNER_DAYS = 60  # skener: kto pridal zákazku (vlastník priečinka) len pri mladších zákazkách
+MACHINE_CONTENT_MAX = 3   # Excel s viac strojmi v obsahu = šablóna / zoznam, nepočíta sa
 
 
 def missing_parts(ftypes: set, exts: set) -> list[str]:

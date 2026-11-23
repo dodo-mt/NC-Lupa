@@ -1,33 +1,40 @@
 """Stroje zákazky – na aký stroj boli robené NC programy.
 
-Číta sa začiatok každého NC súboru zákazky (aj nástrojové listy .h / .nc) a riadok „STROJ:“:
-  (STROJ: DMU 80 eVo - B/C)      ;STROJ : GMX 250L - SIEMENS 840D      Stroj: DMC 105 - H530
-Text sa skráti podľa config.MACHINES (eVo 80, mono H640…), rovnaké stroje sa zlúčia.
-Bez hlavičky: prípona (config.MACHINE_EXTS, .eia = Mazak) a meno CNC listu v zákazke
-(config.MACHINE_HINTS – Gamma / Gmx, J200 / IG400, WFL).
+Zdroje (všetky sa zlúčia, každý stroj raz):
+  1. hlavička NC súboru (aj nástrojové listy .h / .nc), riadok „STROJ:“:
+       (STROJ: DMU 80 eVo - B/C)      ;STROJ : GMX 250L - SIEMENS 840D      Stroj: DMC 105 - H530
+     bez hlavičky znak v obsahu (config.MACHINE_SIGNS – WFL) alebo prípona (.eia = Mazak)
+  2. meno CNC listu (config.MACHINE_NAMES – OD…_op20_GMX.xls, …_MAZAK-IG400.pdf)
+  3. obsah Excelu (bunka „Názov stroja“ = WFL M40, monoBLOCK - 840D)
+  4. cieľ odkazu .lnk na staré heslo – to isté v cieľovom priečinku (štítok „cez odkaz“)
+Text sa skráti podľa config.MACHINES (eVo 80, mono H640…).
 
 Len číta (na L:\\ nič nemení). Výsledok v pamäti podľa cesty + veľkosti + času zmeny.
 """
 
 from __future__ import annotations
 
-import os
+import html
 import re
 import threading
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 
 import config
+import listy
 
 HEAD_BYTES = 4096        # hlavička hyperMILL je v prvých ~10 riadkoch
 MAX_FILES = 500          # zákazka s obrovským počtom programov – ďalšie sa nečítajú
+MAX_EXCELS = 20          # obsah: najnovšie Excely zákazky
 WORKERS = 8              # súbežné čítanie cez sieť
+EXCEL_EXTS = {"xls", "xlsx", "xlsm"}
 
 _STROJ = re.compile(r"STROJ\s*:\s*(.+)", re.IGNORECASE)
 _RULES = [(re.compile(p, re.IGNORECASE), name) for p, name in config.MACHINES]
-_HINTS = {k: [(re.compile(p, re.IGNORECASE), name) for p, name in v] for k, v in config.MACHINE_HINTS.items()}
-_HINT_EXTS = [{"xls", "xlsx", "xlsm"}, {"pdf", "doc", "docx"}]   # najprv Excel, potom ostatné
+_SIGNS = [(re.compile(p, re.IGNORECASE), name) for p, name in config.MACHINE_SIGNS]
+_NAMES = [(re.compile(p, re.IGNORECASE), name) for p, name in config.MACHINE_NAMES]
 
-_cache: dict[tuple, str | None] = {}   # (cesta, veľkosť, zmenený) -> surový text stroja / None
+_cache: dict[tuple, object] = {}   # (druh, cesta, veľkosť, zmenený) -> výsledok čítania
 _lock = threading.Lock()
 
 
@@ -38,90 +45,169 @@ def _long(p: str) -> str:
     return "\\\\?\\UNC\\" + p[2:] if p.startswith("\\\\") else "\\\\?\\" + p
 
 
-def read_head(path: str) -> str | None:
-    """Text za „STROJ:“ zo začiatku súboru (bez zátvorky), None = nie je / nedá sa čítať."""
+def read_head(path: str) -> tuple[str | None, str | None]:
+    """Zo začiatku súboru: (text za „STROJ:“ bez zátvorky, stroj podľa znaku config.MACHINE_SIGNS).
+    (None, None) = nič / nedá sa čítať."""
     try:
         with open(_long(path), "rb") as fh:
             data = fh.read(HEAD_BYTES)
     except OSError:
-        return None
-    for line in data.decode("cp1250", errors="replace").splitlines():
+        return None, None
+    text = data.decode("cp1250", errors="replace")
+    for line in text.splitlines():
         m = _STROJ.search(line)
         if m:
             txt = m.group(1).strip().rstrip(")").strip()
-            return txt or None
-    return None
+            if txt:
+                return txt, None
+    for rx, name in _SIGNS:
+        if rx.search(text):
+            return None, name
+    return None, None
 
 
-def short_name(raw: str) -> str:
-    """Text z hlavičky -> skratka stroja (neznámy ostane, ako je)."""
+def short_name(raw: str) -> str | None:
+    """Text -> skratka stroja podľa config.MACHINES, None = žiadne pravidlo nesedí."""
     for rx, name in _RULES:
         if rx.search(raw):
             return name
-    return raw
+    return None
 
 
-def _cached_head(f: dict) -> str | None:
-    key = (f["path"], f["size"], f["modified"])
+def _cells(path: str, ext: str) -> list[str]:
+    """Texty buniek Excelu (xlsx/xlsm z XML, starý .xls – úseky textu)."""
+    if ext in ("xlsx", "xlsm"):
+        out = []
+        with zipfile.ZipFile(_long(path)) as z:
+            for n in z.namelist():
+                low = n.lower()
+                if low.startswith(("xl/sharedstrings", "xl/worksheets/sheet")) and low.endswith(".xml"):
+                    xml = z.read(n).decode("utf-8", "replace")
+                    out += [html.unescape(t) for t in re.findall(r"<t[^>]*>([^<]*)</t>", xml)]
+        return out
+    from pathlib import Path
+    return re.split(r"\s{2,}", listy.text_ole(Path(_long(path))))
+
+
+def read_excel(path: str, ext: str) -> list[tuple[str, str]]:
+    """Stroje v obsahu Excelu: [(skratka, text bunky)]; viac ako MACHINE_CONTENT_MAX = šablóna -> []."""
+    try:
+        cells = _cells(path, ext)
+    except Exception:   # poškodený / zamknutý súbor – bez stroja, nepadať
+        return []
+    found: dict[str, str] = {}
+    for t in cells:
+        t = t.strip()
+        if 0 < len(t) <= 60:
+            n = short_name(t)
+            if n and n not in found:
+                found[n] = t
+    if len(found) > config.MACHINE_CONTENT_MAX:
+        return []
+    return list(found.items())
+
+
+def _cached(kind: str, f: dict, fn):
+    key = (kind, f["path"], f["size"], f["modified"])
     with _lock:
         if key in _cache:
             return _cache[key]
-    raw = read_head(f["path"])
+    val = fn()
     with _lock:
-        _cache[key] = raw
-    return raw
+        _cache[key] = val
+    return val
 
 
-def _hint(names: list[dict], rules: list) -> list[str]:
-    """Skratky z mien dokumentov – najprv Excely; ak tam nič, PDF / Word."""
-    for exts in _HINT_EXTS:
-        found = [name for rx, name in rules
-                 if any(d["ext"] in exts and rx.search(d["name"]) for d in names)]
-        if found:
-            return found
-    return []
+def _by_name(docs: list[dict]) -> dict[str, list[str]]:
+    """Stroje z mien listov {skratka: [mená]} – Excel aj PDF / Word. Pri spore o rovnaký
+    program (Gmx / Gamma) rozhoduje Excel: PDF s Gamma sa neberie, keď Excel hovorí GMX."""
+    xls: dict[str, list[str]] = {}
+    other: dict[str, list[str]] = {}
+    for d in docs:
+        found = xls if d["ext"] in EXCEL_EXTS else other
+        for rx, name in _NAMES:
+            if rx.search(d["name"]):
+                found.setdefault(name, []).append(d["name"])
+    for base, specs in config.MACHINE_SAME_PROGRAM.items():
+        group = {base, *specs}
+        if group & xls.keys():
+            for name in group - xls.keys():
+                other.pop(name, None)
+    for name, names in other.items():
+        xls.setdefault(name, []).extend(names)
+    return xls
 
 
-def job_machines(nc_files: list[dict], docs: list[dict]) -> list[dict]:
-    """Stroje zákazky.
+def machines(nc_files: list[dict], docs: list[dict], pool: ThreadPoolExecutor) -> dict[str, dict]:
+    """Stroje z NC súborov a listov jedného miesta (zákazka / cieľ odkazu).
 
-    nc_files: NC súbory {path, name, ext, size, modified}; docs: Excel / PDF / Word {name, ext}.
-    Vracia [{name, n (počet súborov), raw (texty z hlavičiek), files (niekoľko mien)}] podľa počtu.
+    nc_files: NC súbory {path, name, ext, size, modified}; docs: Excel / PDF / Word (to isté).
+    Vracia {skratka: {name, n (NC súborov), raw (hlavičky), files (NC), lists (listy)}}.
     """
     files = nc_files[:MAX_FILES]
-    with ThreadPoolExecutor(WORKERS) as ex:
-        heads = list(ex.map(_cached_head, files))
+    excels = [d for d in docs if d["ext"] in EXCEL_EXTS][:MAX_EXCELS]
+    heads = pool.map(lambda f: _cached("h", f, lambda: read_head(f["path"])), files)
+    contents = pool.map(lambda d: _cached("x", d, lambda: read_excel(d["path"], d["ext"])), excels)
     out: dict[str, dict] = {}
 
-    def add(name, f, raw=None):
-        h = out.setdefault(name, {"name": name, "n": 0, "raw": [], "files": []})
+    def entry(name):
+        return out.setdefault(name, {"name": name, "n": 0, "raw": [], "files": [], "lists": []})
+
+    def add_list(name, doc):
+        h = entry(name)
+        if doc not in h["lists"]:
+            h["lists"].append(doc)
+
+    for f, (raw, sign) in zip(files, heads):
+        name = (short_name(raw) or raw) if raw else sign or config.MACHINE_EXTS.get(f["ext"])
+        if not name:
+            continue
+        h = entry(name)
         h["n"] += 1
         if raw and raw not in h["raw"]:
             h["raw"].append(raw)
         if len(h["files"]) < 5:
             h["files"].append(f["name"])
 
-    for f, raw in zip(files, heads):
-        if raw:
-            add(short_name(raw), f, raw)
-        elif f["ext"] in config.MACHINE_EXTS:
-            add(config.MACHINE_EXTS[f["ext"]], f)
+    from_lists: set[str] = set()
+    for name, names in _by_name(docs).items():
+        for d in names:
+            add_list(name, d)
+        from_lists.add(name)
+    for d, found in zip(excels, contents):
+        for name, txt in found:
+            add_list(name, f"{d['name']} ({txt})")
+            from_lists.add(name)
 
-    # spresnenie podľa mena CNC listu (rovnaký program pre viac strojov / bez hlavičky)
-    for base, rules in _HINTS.items():
-        if base is None:
-            for name in _hint(docs, rules):
-                if name not in out:
-                    out[name] = {"name": name, "n": 0, "raw": [], "files": [], "by_list": True}
-            continue
-        if base not in out:
-            continue
-        found = _hint(docs, rules)
-        if found and found != [base]:
+    # GMX v hlavičke, ale listy hovoria len Gamma -> Gamma (rovnaký program)
+    for base, specs in config.MACHINE_SAME_PROGRAM.items():
+        hit = [s for s in specs if s in from_lists]
+        if base in out and hit and base not in from_lists:
             h = out.pop(base)
-            for name in found:
-                if name in out:
-                    out[name]["n"] += h["n"]
-                else:
-                    out[name] = dict(h, name=name, by_list=True)
-    return sorted(out.values(), key=lambda h: -h["n"])
+            for s in hit:
+                out[s]["n"] += h["n"]
+                out[s]["raw"] += h["raw"]
+                out[s]["files"] += h["files"][:5]
+    # Mazak (.eia) + list MAZAK-IG400 -> len IG400
+    for base, specs in config.MACHINE_GENERIC.items():
+        hit = [s for s in specs if s in out]
+        if base in out and hit:
+            h = out.pop(base)
+            if len(hit) == 1:
+                s = out[hit[0]]
+                s["n"] += h["n"]
+                s["files"] += h["files"][:5]
+                s["lists"] += [d for d in h["lists"] if d not in s["lists"]]
+    return out
+
+
+def job_machines(own: tuple[list, list], links: list[tuple[str, list, list]]) -> list[dict]:
+    """Stroje zákazky: own = (NC súbory, listy) zákazky, links = [(cieľ odkazu, NC súbory, listy)].
+    Stroj len z cieľa odkazu má via = cieľ (v UI bledší). Poradie: vlastné podľa počtu, potom odkazy."""
+    with ThreadPoolExecutor(WORKERS) as pool:
+        out = machines(*own, pool)
+        for target, nc, docs in links:
+            for name, h in machines(nc, docs, pool).items():
+                if name not in out:
+                    out[name] = dict(h, via=target)
+    return sorted(out.values(), key=lambda h: (bool(h.get("via")), -h["n"], -len(h["lists"])))

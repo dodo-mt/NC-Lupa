@@ -182,12 +182,21 @@ používateľ ich skúša v práci. Návrh na neskôr (neschválený): celá str
 menom v tom istom priečinku (ak existuje), inak súčasný obrázok; vykresľovanie cez Word COM radšej nie.
 
 **Rozpracované (23.11.2026)**: **stroje zákazky** (`stroje.py`, `Api.get_machines`) – štítky za úplnosťou
-(každý stroj raz, bublinka = počet súborov + hlavička). Číta Lupa pri kliknutí na zákazku (prvé 4 kB NC
-súborov, riadok `STROJ:`, cache v pamäti), nie skener. Skratky `config.MACHINES` (eVo 80, mono H640,
-mono 840D, DMC 160/105, H530 3x, Kaoming, HPM 450, Gmx, NTX, J200, IG400, Mazak), bez hlavičky
-`.eia` = Mazak; spresnenie menom CNC listu (`MACHINE_HINTS`, najprv Excel, potom PDF/Word):
-GMX → Gamma / Gmx, Mazak → J200 / IG400, `WFL` v mene → WFL. Neznámy stroj = text z hlavičky.
+(každý stroj raz, bublinka = počet súborov, hlavička, listy). Číta Lupa pri kliknutí na zákazku (cache
+v pamäti), nie skener. Zdroje: 1. hlavička NC (prvé 4 kB, riadok `STROJ:`), bez nej znak WFL
+(`MACHINE_SIGNS`: `_N_WKS_DIR`, `TLCH1(`) alebo prípona (`.eia` = Mazak, `.wpd` = WFL);
+2. meno CNC listu (`MACHINE_NAMES`, Excel aj PDF/Word – pri spore Gmx/Gamma rozhoduje Excel);
+3. obsah Excelu (bunka, ktorá sedí na `MACHINES` – „Názov stroja: WFL M40“; viac ako 3 stroje = šablóna);
+4. cieľ odkazu .lnk na staré heslo (to isté v cieľovom priečinku, štítok bledý s reťazou).
+Skratky `config.MACHINES` (eVo 80, mono H640, mono 840D, DMC 160/105, H530 3x, Kaoming, HPM 450, Gmx,
+NTX, J200, IG400, Mazak, WFL); `MACHINE_GENERIC` (Mazak + IG400 = IG400), `MACHINE_SAME_PROGRAM`
+(hlavička GMX + listy len Gamma = Gamma). Neznámy stroj = text z hlavičky.
 Oprava: riadok odkazov `.links[hidden]` ostával viditeľný pri zákazke bez odkazov.
+**Zvonček „Nové zákazky“** (vpravo v hornej lište): `jobs.created` = vytvorenie priečinka zákazky,
+`jobs.added_by` = jeho vlastník (skener, len zákazky mladšie ako `NEW_JOBS_OWNER_DAYS` = 60 dní –
+GetFileSecurity cez sieť). `Api.get_new_jobs(days)`; menu 1 / 3 / 7 / 14 dní (`lupa.bell.days`),
+číslo = nevidené (`lupa.bell.seen` = najnovšia videná, otvorením menu zmizne). Po zverejnení novej DB
+sa zvonček načíta hneď. Treba nový skener (`ikona_skenu.bat`); stará DB = zvonček skrytý.
 
 **Na rade (21.11.2026)**:
 - Pomalý štart (16 s cez sieť – meranie `zmeraj_start.py`: počet odtlačkov 8,3 s, úplnosť 4,7 s) →

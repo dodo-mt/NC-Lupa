@@ -828,11 +828,24 @@ const ICON_MACHINE = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none
 
 function machineTip(m) {
   const lines = [];
-  if (m.n) lines.push(`${m.n} ${m.n === 1 ? 'súbor' : m.n <= 4 ? 'súbory' : 'súborov'} (NC programy, nástrojové listy)`);
-  if (m.by_list) lines.push('Podľa mena CNC listu v zákazke');
-  if (m.raw.length) lines.push('Hlavička: ' + m.raw.join(' · '));
-  if (m.files.length) lines.push(m.files.join('\n') + (m.n > m.files.length ? '\n…' : ''));
+  if (m.via) lines.push(`Cez odkaz na staré heslo: ${m.via}`);
+  if (m.n) {
+    lines.push(`${m.n} ${m.n === 1 ? 'súbor' : m.n <= 4 ? 'súbory' : 'súborov'} (NC programy, nástrojové listy)` +
+      (m.raw.length ? ` – hlavička: ${m.raw.join(' · ')}` : ''));
+    lines.push(...m.files.slice(0, 5).map((n) => '  ' + n));
+    if (m.n > 5) lines.push('  …');
+  }
+  if (m.lists.length) {
+    lines.push('CNC listy:');
+    lines.push(...m.lists.slice(0, 5).map((n) => '  ' + n));
+    if (m.lists.length > 5) lines.push('  …');
+  }
   return lines.join('\n');
+}
+
+// Cieľ odkazu skrátene: posledné dve časti cesty (OD645\000040)
+function shortTarget(p) {
+  return p.split('\\').filter(Boolean).slice(-2).join('\\');
 }
 
 async function renderMachines(jobId) {
@@ -849,7 +862,8 @@ async function renderMachines(jobId) {
   const list = jobMachines.get(jobId);
   if (!list.length) { box.hidden = true; return; }
   box.innerHTML = ICON_MACHINE +
-    list.map((m) => `<span title="${esc(machineTip(m))}">${esc(m.name)}</span>`).join('');
+    list.map((m) => `<span class="${m.via ? 'via' : ''}" title="${esc(machineTip({ ...m, via: m.via && shortTarget(m.via) }))}">` +
+      `${esc(m.name)}${m.via ? `<small>${ICON_LINK}</small>` : ''}</span>`).join('');
   box.hidden = false;
 }
 
@@ -1863,6 +1877,117 @@ function renderStatus() {
   }
 }
 
+// --- zvonček „Nové zákazky“ ---------------------------------------------------
+// Zákazky, ktorých priečinok vznikol za posledné dni (jobs.created zo skenera, kto = vlastník
+// priečinka). Číslo = ešte nevidené (pribudli po poslednom otvorení menu) – len v tomto PC.
+const BELL_DAYS = [1, 3, 7, 14];
+let bell = { ok: false, jobs: [] };
+
+function bellDays() {
+  const d = Number(lsGet('lupa.bell.days', 1));
+  return BELL_DAYS.includes(d) ? d : 1;
+}
+
+function bellSeen() {
+  return Number(lsGet('lupa.bell.seen', 0)) || 0;
+}
+
+async function loadBell() {
+  try { bell = await api.get_new_jobs(bellDays()); } catch (e) { bell = { ok: false, jobs: [] }; }
+  renderBellBtn();
+  if (!$('bellMenu').hidden) renderBellMenu(bellShownSeen);
+}
+
+function renderBellBtn() {
+  const btn = $('bell');
+  btn.hidden = !bell.ok;
+  const n = bell.jobs.filter((j) => j.created > bellSeen()).length;
+  $('bellN').hidden = !n;
+  $('bellN').textContent = n > 99 ? '99+' : String(n);
+  btn.classList.toggle('has', n > 0);
+  const d = bellDays();
+  btn.title = `Nové zákazky za ${d === 1 ? 'posledný deň' : `posledných ${d} dní`}: ${bell.jobs.length}` +
+    (n ? ` (nevidené ${n})` : '');
+}
+
+// Kedy pribudla: dnes / včera s časom, inak dátum
+function bellWhen(ts) {
+  const d = new Date(ts * 1000);
+  const t = fmtDate(ts).slice(11);
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(new Date()) - day(d)) / 86400000);
+  return diff === 0 ? `dnes ${t}` : diff === 1 ? `včera ${t}` : fmtDay(ts);
+}
+
+let bellShownSeen = 0;   // „nevidené“ pri otvorení menu (zvýraznené, kým je menu otvorené)
+
+function renderBellMenu(seen) {
+  const box = $('bellMenu');
+  const d = bellDays();
+  const out = [`<div class="bm-top"><span class="bm-title">Nové zákazky</span><span class="bm-days" title="Za koľko dní dozadu">` +
+    BELL_DAYS.map((x) => `<button type="button" data-days="${x}" class="${x === d ? 'on' : ''}">${x} ${x === 1 ? 'deň' : x <= 4 ? 'dni' : 'dní'}</button>`).join('') +
+    '</span></div>'];
+  if (!bell.jobs.length) {
+    out.push(`<div class="bm-empty">Za ${d === 1 ? 'posledný deň' : `posledných ${d} dní`} nepribudla žiadna zákazka.</div>`);
+  }
+  bell.jobs.forEach((j, i) => {
+    const f = findJob(j.id);
+    const cust = j.customer;
+    out.push(`<button type="button" class="dd-item fm-item${j.created > seen ? ' unseen' : ''}" data-i="${i}" title="${esc(cust)} \\ ${esc(j.name)}\nPribudla ${esc(fmtDate(j.created))}${j.added_by ? `, pridal ${esc(ownerName(j.added_by))}` : ''}">` +
+      `<span class="nm">${esc(j.name)}</span><span class="fm-sub">${esc(cust)}</span>` +
+      `${j.added_by && j.added_by !== '?' ? `<span class="bm-by">${esc(ownerName(j.added_by))}</span>` : ''}` +
+      `<span class="bm-when">${esc(bellWhen(j.created))}</span>${f ? complStatus(f.job.missing) : ''}</button>`);
+  });
+  if (bell.jobs.length >= 300) out.push('<div class="fm-more">… zobrazených najviac 300</div>');
+  out.push('<div class="fm-hint">Klik = otvoriť v strome · Esc zavrieť</div>');
+  box.innerHTML = out.join('');
+  const r = $('bell').getBoundingClientRect();
+  const w = Math.min(480, window.innerWidth - 16);
+  box.style.left = `${Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8))}px`;
+  box.style.top = `${r.bottom + 6}px`;
+  box.hidden = false;
+}
+
+function openBell() {
+  bellShownSeen = bellSeen();
+  const newest = Math.max(bellShownSeen, ...bell.jobs.map((j) => j.created || 0));
+  lsSet('lupa.bell.seen', String(newest));   // otvorením sú všetky videné (číslo zmizne)
+  $('bell').classList.add('open');
+  renderBellMenu(bellShownSeen);
+  renderBellBtn();
+}
+
+function closeBell() {
+  $('bellMenu').hidden = true;
+  $('bell').classList.remove('open');
+}
+
+function bindBell() {
+  $('bell').onclick = () => ($('bellMenu').hidden ? openBell() : closeBell());
+  $('bellMenu').addEventListener('click', async (e) => {
+    const dd = e.target.closest('[data-days]');
+    if (dd) {
+      lsSet('lupa.bell.days', dd.dataset.days);
+      await loadBell();
+      return;
+    }
+    const b = e.target.closest('.fm-item');
+    if (!b) return;
+    const j = bell.jobs[Number(b.dataset.i)];
+    closeBell();
+    if (!findJob(j.id)) { toast('Zákazka v strome nie je – obnov údaje (F5)'); return; }
+    clearSearchQuiet();
+    await gotoJob(j.id, '');
+  });
+  document.addEventListener('mousedown', (e) => {
+    if (!$('bellMenu').hidden && !e.target.closest('#bellMenu, #bell')) closeBell();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('bellMenu').hidden) { e.stopPropagation(); closeBell(); }
+  }, true);
+  window.addEventListener('resize', closeBell);
+}
+
 // --- obnovenie údajov bez reštartu --------------------------------------------
 // Skener zverejní novú DB → kópia sa na pozadí vymení (dbcopy), strom v okne je ale zo štartu.
 // Každých UPDATE_EVERY ms sa zistí, či je nová kópia (tlačidlo Obnoviť zmodrie) a či je
@@ -1875,6 +2000,7 @@ async function checkUpdates() {
   let u;
   try { u = await api.check_updates(); } catch (e) { return; }
   const isNew = !!(dbTag && u.db && u.db !== dbTag);
+  if (isNew && !$('stReload').classList.contains('new')) loadBell();   // nové zákazky hneď na zvončeku
   $('stReload').classList.toggle('new', isNew);
   $('stReloadText').textContent = isNew ? 'Nové údaje – Obnoviť' : 'Obnoviť';
   $('stReload').title = isNew ? 'Skener medzitým aktualizoval databázu – načítať nové údaje (F5)'
@@ -1913,6 +2039,7 @@ async function reloadData() {
     renderScope();
     await refresh();
     renderStatus();
+    loadBell();
     $('stReload').classList.remove('new');
     $('stReloadText').textContent = 'Obnoviť';
     toast(`Údaje obnovené – ${state.meta.counts ? state.meta.counts.jobs.toLocaleString('sk-SK') + ' zákaziek' : 'hotovo'}`);
@@ -2046,12 +2173,14 @@ async function initApp() {
   loadDone();
   renderStatus();
   $('q').focus();
+  loadBell();
   dbTag = (await api.check_updates()).db;
   checkUpdates();
   setInterval(checkUpdates, UPDATE_EVERY);
 }
 
 bind();
+bindBell();
 bindResizers();
 bindColumns();
 window.addEventListener('pywebviewready', init);
