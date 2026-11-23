@@ -102,6 +102,23 @@ button { font-family: inherit; cursor: pointer; }
   color: #9ca3af;
 }
 .bell:hover, .bell.open { background: #1f2937; color: #f9fafb; }
+/* koliesko nastavení – vľavo od zvončeka */
+.topbtn {
+  position: absolute;
+  right: 62px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #9ca3af;
+}
+.topbtn:hover { background: #1f2937; color: #f9fafb; }
 .bell.has { color: #f9fafb; }
 .bell[hidden] { display: none; }
 .bell-n {
@@ -295,6 +312,18 @@ select {
 .dlg-hint { font-size: 11px; color: var(--muted); }
 .dlg input { height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
 .dlg input:focus { outline: 2px solid #93c5fd; border-color: var(--accent); }
+/* O programe */
+.dlg.about { width: 460px; gap: 12px; }
+.about-head { display: flex; align-items: center; gap: 12px; }
+.about-head .dlg-title { font-size: 17px; }
+.about-head #aboutVer { font-weight: 500; color: var(--muted); }
+.about-list { display: grid; grid-template-columns: 120px 1fr; gap: 4px 10px; margin: 0; font-size: 13px; }
+.about-list dt { color: var(--muted); }
+.about-list dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.about-tech { padding-top: 10px; border-top: 1px solid var(--line-soft); font-size: 12px; }
+.about-tech dd { font-family: var(--mono); font-size: 11.5px; }
+.brand { cursor: pointer; border-radius: 8px; }
+.brand:hover .brand-name { color: #bfdbfe; }
 .dlg-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 .dlg-btns .btn { flex: none; min-height: 34px; min-width: 88px; font-size: 13px; cursor: pointer; }
 .chip-select.active { border: 2px solid var(--accent); padding: 0 7px 0 9px; background: var(--accent-soft); color: #1e3a8a; }
@@ -563,6 +592,11 @@ body.resizing .resizer.drag, body.resizing .col-grip.drag { pointer-events: auto
 }
 .compl .y { background: #dcfce7; color: #14532d; }
 .compl .n { background: #fef3c7; color: #78350f; }
+/* úplnosť vybraného podpriečinka – menšie, pod úplnosťou zákazky */
+.compl-dir { margin-top: 6px; }
+.compl-dir .cd-label { padding: 0; font-weight: 500; color: var(--muted); }
+.compl-dir .cd-label .mono { padding: 0; color: #374151; }
+.compl-dir span.y, .compl-dir span.n { font-size: 11px; padding: 2px 6px; }
 /* stroje zákazky (hlavičky NC programov) – za úplnosťou */
 .machines { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .machines[hidden] { display: none; }

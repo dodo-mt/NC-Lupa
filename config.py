@@ -11,7 +11,7 @@ from pathlib import Path
 import listy
 
 # Verzia aplikácie – zvyšovať pri každom vydaní (zobrazuje sa v UI, ikone skenu, logu a vo vlastnostiach exe)
-VERSION = "1.4.1"
+VERSION = "1.5.0"
 
 # Priečinok programu (pri PyInstaller exe = priečinok s exe). Lupa beží z lokálnej kópie
 # v %LOCALAPPDATA% (launcher.py) – spúšťač jej v LUPA_HOME odovzdá svoj priečinok (L:\_Lupa),
@@ -34,6 +34,9 @@ _DEFAULTS = {
     "exclude": "",
     # CNC listy (listy.py): listy_mena, listy_priecinky, listy_obsah, listy_obsah_min, listy_minutes
     **listy.DEFAULTS,
+    "scan_minutes": "60",   # ikona skenu: bežný sken každých N minút
+    "zvoncek_dni": "1",     # zvonček: predvolený počet dní (každý si ho v Lupe vie zmeniť)
+    "spravca": "",          # kto smie meniť nastavenia v Lupe (mená Windows, čiarkou); prázdne = každý
 }
 
 
@@ -55,6 +58,38 @@ def _load_ini(*paths: Path) -> dict:
 _ini = _load_ini(INI_PATH)
 
 
+def _num(s: str, default: float) -> float:
+    try:
+        return float(s)
+    except (TypeError, ValueError):
+        return default
+
+
+def _load_rules(section: str, default: list, *paths: Path) -> list[tuple[str, str]]:
+    """Pravidlá strojov z lupa.ini: [section] skratka = regulárny výraz (poradie = priorita).
+    Sekcia chýba / je prázdna -> default. Neplatný výraz sa vynechá (program nesmie spadnúť)."""
+    import re
+    cp = configparser.ConfigParser(interpolation=None, strict=False)
+    cp.optionxform = str   # skratky s veľkými písmenami (eVo 80, DMC 105)
+    for p in paths:
+        try:
+            if p.exists():
+                cp.read(p, encoding="utf-8-sig")
+        except (OSError, configparser.Error):
+            pass
+    if not cp.has_section(section) or not cp.items(section):
+        return list(default)
+    out = []
+    for name, rx in cp.items(section):
+        try:
+            re.compile(rx)
+        except re.error:
+            continue
+        if name.strip() and rx.strip():
+            out.append((rx.strip(), name.strip()))
+    return out or list(default)
+
+
 def _patterns(s: str) -> list[str]:
     """'[0-9]*, OD*' -> ['[0-9]*', 'od*'] (vzory pre fnmatch, malými písmenami)."""
     return [p.strip().lower() for p in s.split(",") if p.strip()]
@@ -69,6 +104,7 @@ def scan_settings(db_path: Path) -> dict:
     ini = _load_ini(INI_PATH, db_path.parent / "lupa.ini")
     return {
         "recent_days": int(ini["recent_days"]),
+        "scan_minutes": max(5, int(_num(ini["scan_minutes"], 60))),
         "prints_minutes": float(ini["prints_minutes"]),
         "customers": _patterns(ini["customers"]),
         "listy": listy.Rules(ini),
@@ -137,8 +173,9 @@ def list_sql(f: str = "f", doclists: bool = True) -> tuple[str, list]:
 
 # Stroje zákazky (stroje.py): text za „STROJ:“ v hlavičke NC programu / nástrojového listu
 # -> skratka. Prvé pravidlo, ktoré sedí (regulárny výraz, veľké písmená nerozhodujú).
-# Neznámy stroj sa ukáže tak, ako je v hlavičke – doplň sem pravidlo.
-MACHINES = [
+# Neznámy stroj sa ukáže tak, ako je v hlavičke – doplň pravidlo.
+# Platí [stroje] v lupa.ini (okno Nastavenia, skratka = výraz); bez nej tieto predvolené.
+DEFAULT_MACHINES = [
     (r"DMU\s*75|monoBLOCK.*840D", "mono 840D"),
     (r"DMU\s*65|monoBLOCK", "mono H640"),
     (r"DMU\s*(80|85)\s*eVo", "eVo 80"),
@@ -162,8 +199,9 @@ MACHINE_SIGNS = [
 ]
 # NC prípony bez hlavičky aj bez znaku vyššie -> stroj
 MACHINE_EXTS = {"eia": "Mazak", "wpd": "WFL"}
-# Stroj podľa mena CNC listu v zákazke (Excel; ak tam nič, tak PDF / Word): (vzor v mene, skratka)
-MACHINE_NAMES = [
+# Stroj podľa mena CNC listu v zákazke (Excel aj PDF / Word): (vzor v mene, skratka)
+# Platí [stroje_listy] v lupa.ini; bez nej tieto predvolené.
+DEFAULT_MACHINE_NAMES = [
     (r"gamma", "Gamma"),
     (r"(?<![a-z])gmx", "Gmx"),
     (r"j-?200", "J200"),
@@ -171,6 +209,10 @@ MACHINE_NAMES = [
     (r"mazak", "Mazak"),
     (r"(?<![a-z])wfl(?![a-z])", "WFL"),
 ]
+MACHINES = _load_rules("stroje", DEFAULT_MACHINES, INI_PATH)
+MACHINE_NAMES = _load_rules("stroje_listy", DEFAULT_MACHINE_NAMES, INI_PATH)
+BELL_DAYS = int(_num(_ini["zvoncek_dni"], 1))
+ADMINS = [a.strip().lower() for a in _ini["spravca"].split(",") if a.strip()]
 # Všeobecný stroj sa vynechá, keď je v zákazke presnejší (Mazak .eia + list MAZAK-IG400 = IG400)
 MACHINE_GENERIC = {"Mazak": ["J200", "IG400"]}
 # Rovnaký program pre viac strojov: hlavička GMX, ale listy hovoria len Gamma -> Gamma

@@ -165,6 +165,7 @@ class Api:
             "last_scan": last[0] if last else None,
             "counts": counts[0] if counts else None,
             "stale_hours": STALE_HOURS,
+            "bell_days": config.BELL_DAYS,
         }
 
     def get_tree(self) -> list[dict]:
@@ -343,6 +344,38 @@ class Api:
         order = lambda h: -(h["changed"] or 0)
         return {"to": sorted(to.values(), key=order), "from": sorted(frm.values(), key=order)}
 
+    def open_settings(self) -> dict:
+        """Koliesko: okno Nastavenia (druhé okno; ak je otvorené, len ho ukáže)."""
+        win = getattr(self, "_settings_win", None)
+        if win is not None:
+            try:
+                win.restore()
+                win.show()
+                return {"ok": True}
+            except Exception:
+                self._settings_win = None
+        win = create_settings_window(from_tray=False)
+        self._settings_win = win
+        win.events.closed += lambda: setattr(self, "_settings_win", None)
+        return {"ok": True}
+
+    def get_about(self) -> dict:
+        """Okno O programe: verzia a zostavenie, cesty (koreň, DB na disku, lokálna kópia), veľkosť DB."""
+        build = None
+        if getattr(sys, "frozen", False):   # exe: version.txt vedľa (verzia+čas zostavenia)
+            try:
+                build = (Path(sys.executable).parent / "version.txt").read_text(encoding="utf-8-sig").strip()
+            except OSError:
+                pass
+        try:
+            size = self._db_path.stat().st_size
+        except OSError:
+            size = None
+        local = self._copy.path()
+        return {"version": config.VERSION, "build": build, "root": str(config.ROOT),
+                "db": str(self._db_path), "db_size": size, "local": str(local) if local else None,
+                "ini": str(config.INI_PATH)}
+
     def get_new_jobs(self, days: float = 1) -> dict:
         """Zvonček za posledných `days` dní:
         jobs    – Nové: zákazka pribudla (vytvorenie priečinka, kto ho založil); ok = False –
@@ -399,12 +432,18 @@ class Api:
                         "file": r["file"], "rel": r["rel"], "kind": kind})
         return res
 
-    def get_machines(self, job_id: int) -> list[dict]:
-        """Stroje zákazky (stroje.py) – štítky za úplnosťou: hlavičky NC programov, mená a obsah
-        CNC listov; aj v cieľoch odkazov .lnk na staré heslá (zákazka často obsahuje len odkaz)."""
+    def get_machines(self, job_id: int, rel: str = "") -> dict:
+        """Štítky za úplnosťou pre vybraný priečinok zákazky (rel '' = celá zákazka):
+        machines – stroje (stroje.py): hlavičky NC programov, mená a obsah CNC listov, aj ciele
+                   odkazov .lnk na staré heslá – len v priečinku a jeho podpriečinkoch
+        missing  – úplnosť priečinka (None pri celej zákazke): jeho súbory s podpriečinkami
+                   + súbory priamo v nadradených priečinkoch (spoločný model / výkres v koreni)."""
         import stroje
-        sel = ("SELECT name, ext, path, size, modified, ftype FROM files"
-               " WHERE job_id = ? AND ftype IN ('NC', 'XLS', 'PDF', 'DOC')")
+        rel = rel or ""
+        under = lambda r: not rel or r == rel or r.startswith(rel + "\\")   # noqa: E731
+        sel = ("SELECT f.name, f.ext, f.path, f.size, f.modified, f.ftype, p.rel_path AS rel FROM files f"
+               " JOIN positions p ON p.id = f.position_id"
+               " WHERE f.job_id = ? AND f.ftype IN ('NC', 'XLS', 'PDF', 'DOC')")
 
         def split(rows):
             rows.sort(key=lambda r: -(r["modified"] or 0))   # najnovšie prvé (limity v stroje.py)
@@ -412,15 +451,38 @@ class Api:
 
         links, seen = [], set()
         for k in self._link_index():
-            if k["src"] != job_id or k["dst"] in (None, job_id) or k["target"].lower() in seen:
+            if (k["src"] != job_id or k["dst"] in (None, job_id) or not under(k["rel"])
+                    or k["target"].lower() in seen):
                 continue
             seen.add(k["target"].lower())
             t = k["target"].rstrip("\\")
             like = t.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "\\%"
-            rows = self._q(sel + " AND (path = ? COLLATE NOCASE OR path LIKE ? ESCAPE '!')", (k["dst"], t, like))
+            rows = self._q(sel + " AND (f.path = ? COLLATE NOCASE OR f.path LIKE ? ESCAPE '!')",
+                           (k["dst"], t, like))
             if rows:
                 links.append((t, *split(rows)))
-        return stroje.job_machines(split(self._q(sel, (job_id,))), links)
+        own = [r for r in self._q(sel, (job_id,)) if under(r["rel"])]
+        return {"machines": stroje.job_machines(split(own), links),
+                "missing": self._dir_missing(job_id, rel) if rel else None}
+
+    def _dir_missing(self, job_id: int, rel: str) -> list[str]:
+        """Úplnosť priečinka: súbory v ňom a v podpriečinkoch + priamo v nadradených priečinkoch
+        (rovnaké pravidlo ako get_tree – CNC list nie je výkres)."""
+        parts = rel.split("\\")
+        above = {"\\".join(parts[:i]) for i in range(len(parts))}   # '', 'ON000', 'ON000\\00055'…
+        lst, largs = config.list_sql("f", self._has_doclists())
+        types, exts = set(), set()
+        for r in self._q(f"SELECT p.rel_path AS rel, f.ftype, f.ext, {lst} AS lst FROM files f"
+                         " JOIN positions p ON p.id = f.position_id WHERE f.job_id = ?"
+                         " GROUP BY p.rel_path, f.ftype, f.ext, lst", (*largs, job_id)):
+            if not (r["rel"] in above or r["rel"] == rel or r["rel"].startswith(rel + "\\")):
+                continue
+            if r["lst"]:
+                types.add("LIST")
+            if not (r["lst"] and r["ftype"] == "PDF"):
+                types.add(r["ftype"])
+            exts.add(r["ext"])
+        return config.missing_parts(types, exts)
 
     def copy_text(self, text: str) -> dict:
         """Do schránky Windows (clipboard API prehliadača v okne nemusí byť povolené)."""
@@ -625,6 +687,49 @@ def _new_app_version() -> str | None:
     return src if src and src != mine else None
 
 
+class SettingsApi:
+    """API okna Nastavenia (ui/nastavenia.html) – lupa.ini cez nastavenia.py.
+    from_tray = otvorené z ikony skenu (Lupa.exe --nastavenia) – smie meniť vždy."""
+
+    def __init__(self, from_tray: bool):
+        self._from_tray = from_tray
+        self._window = None
+
+    def get(self) -> dict:
+        import nastavenia
+        d = nastavenia.read(config.INI_PATH, self._from_tray)
+        d["version"] = config.VERSION
+        d["from_tray"] = self._from_tray
+        return d
+
+    def save(self, values: dict, rules: dict) -> dict:
+        import nastavenia
+        return nastavenia.save(config.INI_PATH, values or {}, rules or {}, self._from_tray)
+
+    def open_ini(self) -> dict:
+        """Otvorí lupa.ini v predvolenom editore (pokročilé nastavenia, komentáre)."""
+        try:
+            os.startfile(config.INI_PATH)
+            return {"ok": True}
+        except OSError as e:
+            return {"ok": False, "error": str(e)}
+
+    def close(self):
+        if self._window:
+            self._window.destroy()
+
+
+def create_settings_window(from_tray: bool):
+    """Okno Nastavenia (samostatné, pamätá si polohu)."""
+    sapi = SettingsApi(from_tray)
+    win = webview.create_window(
+        f"Lupa {config.VERSION} – Nastavenia", str(UI_DIR / "nastavenia.html"), js_api=sapi,
+        width=860, height=820, min_size=(640, 480), background_color="#eef1f5")
+    sapi._window = win
+    winstate.attach(win, "nastavenia")
+    return win
+
+
 def clear_web_cache(storage: Path = WEB_STORAGE):
     """Zmaže HTTP cache WebView2 (nie localStorage s nastaveniami).
 
@@ -638,6 +743,10 @@ def clear_web_cache(storage: Path = WEB_STORAGE):
 
 def main():
     clear_web_cache()
+    if "--nastavenia" in sys.argv:   # z ikony skenu: len okno Nastavenia
+        create_settings_window(from_tray=True)
+        webview.start(debug="--debug" in sys.argv, private_mode=False, storage_path=str(WEB_STORAGE))
+        return
     api = Api(config.DB_PATH)
     window = webview.create_window(
         f"Lupa {config.VERSION}",

@@ -25,7 +25,7 @@ import scanner
 
 log = logging.getLogger("lupa.tray")
 
-INTERVAL = 3600          # bežný sken každú hodinu
+INTERVAL = 3600          # bežný sken každú hodinu (scan_minutes v lupa.ini – okno Nastavenia)
 FIRST_DELAY = 120        # prvý sken po štarte (sieťový disk sa pripája)
 RETRY_NO_ROOT = 300      # L:\ nedostupný – skúsiť znova o 5 min
 
@@ -33,7 +33,7 @@ WM_TRAY = win32con.WM_USER + 20
 WM_APP_UPDATE = win32con.WM_USER + 21
 NIN_BALLOONUSERCLICK = win32con.WM_USER + 5
 NIIF_INFO, NIIF_WARNING, NIIF_ERROR = 1, 2, 3
-ID_SCAN, ID_FULL, ID_LUPA, ID_LOG, ID_QUIT = range(1001, 1006)
+ID_SCAN, ID_FULL, ID_LUPA, ID_LOG, ID_QUIT, ID_SETTINGS = range(1001, 1007)
 
 
 def asset(name: str) -> str:
@@ -179,6 +179,7 @@ class Tray:
         add("", 0, win32con.MF_SEPARATOR)
         add("Otvoriť Lupu", ID_LUPA)
         add("Otvoriť log", ID_LOG)
+        add("Nastavenia…", ID_SETTINGS)
         add("", 0, win32con.MF_SEPARATOR)
         add("Ukončiť", ID_QUIT)
         win32gui.SetMenuDefaultItem(m, ID_LUPA, False)
@@ -198,6 +199,8 @@ class Tray:
             self.open_lupa()
         elif cmd == ID_LOG:
             self.open_log()
+        elif cmd == ID_SETTINGS:
+            self.open_lupa("--nastavenia")
         elif cmd == ID_QUIT:
             win32gui.DestroyWindow(self.hwnd)
         return 0
@@ -211,19 +214,30 @@ class Tray:
         return 0
 
     # --- akcie -------------------------------------------------------------
-    def open_lupa(self):
+    def open_lupa(self, *args: str):
+        """Lupa (spúšťač vedľa DB); args = napr. --nastavenia (len okno Nastavenia)."""
         exe = self.db_path.parent / "Lupa.exe"
         try:
             if exe.exists():
-                os.startfile(exe)
+                if args:
+                    subprocess.Popen([str(exe), *args], cwd=str(exe.parent))
+                else:
+                    os.startfile(exe)
             elif not getattr(sys, "frozen", False):
                 pyw = Path(sys.executable).with_name("pythonw.exe")
                 subprocess.Popen([str(pyw if pyw.exists() else sys.executable),
-                                  str(Path(__file__).resolve().parent / "app.py")])
+                                  str(Path(__file__).resolve().parent / "app.py"), *args])
             else:
                 self.balloon("Lupa", f"Nenašiel sa {exe}", NIIF_WARNING)
         except OSError as e:
             self.balloon("Lupa", f"Lupu sa nepodarilo spustiť: {e}", NIIF_ERROR)
+
+    def interval(self) -> int:
+        """Sekundy do ďalšieho skenu – scan_minutes z lupa.ini (zmena platí od ďalšieho skenu)."""
+        try:
+            return int(config.scan_settings(self.db_path)["scan_minutes"]) * 60
+        except Exception:
+            return INTERVAL
 
     def open_log(self):
         try:
@@ -254,7 +268,7 @@ class Tray:
             if res["status"] != "busy":
                 self.last, self.last_time = res, time.time()
             retry = res["status"] == "no_root"
-            self.next_time = time.time() + (RETRY_NO_ROOT if retry else INTERVAL)
+            self.next_time = time.time() + (RETRY_NO_ROOT if retry else self.interval())
             self.notify(res, manual=kind is not None)
             self.post_update()
 

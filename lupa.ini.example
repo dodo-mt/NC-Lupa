@@ -34,3 +34,19 @@ listy_obsah = Programátor:, CESTA:, Názov stroja, Výrobný príkaz:, Artikel:
 listy_obsah_min = 2
 ; čítanie obsahu dokumentov: najviac N minút na jeden sken (prvé prejdenie L:\ sa rozloží), 0 = vypnuté
 listy_minutes = 10
+
+; Ikona skenu pri hodinách: bežný sken každých N minút (najmenej 5)
+scan_minutes = 60
+; Zvonček Nové zákazky: predvolený počet dní (1, 3, 7 alebo 14) – každý si ho v Lupe vie zmeniť
+zvoncek_dni = 1
+; Kto smie meniť nastavenia v Lupe (koliesko) – mená Windows oddelené čiarkou, prázdne = každý.
+; Z ikony skenu (menu Nastavenia…) sa dajú meniť vždy.
+spravca =
+
+; Stroje (štítky pri zákazke): skratka = regulárny výraz v texte za „STROJ:“ v hlavičke NC programu.
+; Prvé pravidlo, ktoré sedí. Bez tejto sekcie platia predvolené (config.py). Upravuje sa v okne Nastavenia.
+; [stroje]
+; eVo 80 = DMU\s*(80|85)\s*eVo
+; Stroje podľa mena CNC listu (OD…_op20_GMX.xls): skratka = vzor v mene
+; [stroje_listy]
+; Gamma = gamma

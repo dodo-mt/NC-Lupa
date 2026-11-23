@@ -848,18 +848,32 @@ function shortTarget(p) {
   return p.split('\\').filter(Boolean).slice(-2).join('\\');
 }
 
-async function renderMachines(jobId) {
+// Stroje za vybraný priečinok s podpriečinkami (koreň = celá zákazka); pri podpriečinku aj riadok
+// „V priečinku …“ s jeho úplnosťou (vnorené zákazky: zákazka \ číslo \ diel – každý diel zvlášť).
+async function renderMachines(jobId, rel = '') {
   const box = $('machines');
-  box.dataset.job = jobId || '';
-  if (!jobId) { box.hidden = true; return; }
-  if (!jobMachines.has(jobId)) {
+  const dir = $('complDir');
+  const key = jobId ? `${jobId}|${rel || ''}` : '';
+  box.dataset.key = key;
+  if (!jobId) { box.hidden = true; dir.hidden = true; return; }
+  if (!jobMachines.has(key)) {
     box.hidden = true;
+    dir.hidden = true;
     let r;
-    try { r = await api.get_machines(jobId); } catch (e) { r = null; }
-    jobMachines.set(jobId, r || []);
-    if (box.dataset.job !== String(jobId)) return;   // medzitým iný výber
+    try { r = await api.get_machines(jobId, rel || ''); } catch (e) { r = null; }
+    jobMachines.set(key, r || { machines: [], missing: null });
+    if (box.dataset.key !== key) return;   // medzitým iný výber
   }
-  const list = jobMachines.get(jobId);
+  const { machines: list, missing } = jobMachines.get(key);
+  if (missing && state.scope === 'job') {
+    const name = rel.split('\\').pop();
+    dir.innerHTML = `<span class="cd-label" title="Úplnosť priečinka ${esc(rel)} – jeho súbory s podpriečinkami a súbory priamo v nadradených priečinkoch">V priečinku <span class="mono">${esc(name)}</span>:</span>` +
+      complCheck(missing).map((c) =>
+        `<span class="${c.ok ? 'y' : 'n'}" title="${c.ok ? 'Je' : 'Chýba'} v priečinku">${c.ok ? '✓' : '✗'} ${esc(c.name)}</span>`).join('');
+    dir.hidden = false;
+  } else {
+    dir.hidden = true;
+  }
   if (!list.length) { box.hidden = true; return; }
   box.innerHTML = ICON_MACHINE +
     list.map((m) => `<span class="${m.via ? 'via' : ''}" title="${esc(machineTip({ ...m, via: m.via && shortTarget(m.via) }))}">` +
@@ -898,7 +912,7 @@ function renderHead() {
   if ($('simClose')) $('simClose').onclick = () => exitSimilar();
   renderCompl();
   renderLinks(f && !state.similar && !all ? f.job.id : null);
-  renderMachines(f && !state.similar && !all ? f.job.id : null);
+  renderMachines(f && !state.similar && !all ? f.job.id : null, state.sel ? state.sel.rel : '');
 
   const n = state.total;
   let cnt = '';
@@ -1888,7 +1902,8 @@ let bell = { ok: false, jobs: [], started: [] };
 let bellShownSeen = 0;   // „nevidené“ pri otvorení menu (zvýraznené, kým je menu otvorené)
 
 function bellDays() {
-  const d = Number(lsGet('lupa.bell.days', 1));
+  const def = (state.meta && state.meta.bell_days) || 1;   // predvolené z nastavení (zvoncek_dni)
+  const d = Number(lsGet('lupa.bell.days', def));
   return BELL_DAYS.includes(d) ? d : 1;
 }
 
@@ -2069,6 +2084,48 @@ function bindBell() {
     if (e.key === 'Escape' && !$('bellMenu').hidden) { e.stopPropagation(); closeBell(); }
   }, true);
   window.addEventListener('resize', closeBell);
+}
+
+// --- O programe (klik na „Lupa“ vľavo hore) -----------------------------------
+let aboutText = '';
+
+async function openAbout() {
+  let a = {};
+  try { a = await api.get_about(); } catch (e) { /* aspoň verzia z meta */ }
+  const m = state.meta || {};
+  $('aboutVer').textContent = a.version || m.version || '';
+  const s = m.last_scan;
+  const rows = [
+    ['Zostavenie', a.build ? a.build.split('+')[1] || a.build : 'vývojová verzia (python)'],
+    ['Koreň', a.root || m.root],
+    ['Databáza', a.db ? `${a.db}${a.db_size ? ` (${fmtSize(a.db_size)})` : ''}` : ''],
+    ['Lokálna kópia', a.local || '–'],
+    ['Nastavenia', a.ini || ''],
+    ['Posledný sken', s ? fmtDate(s.finished) : '–'],
+    ['Používateľ', me.user ? `${me.user}${me.owner && me.owner !== me.user ? ` (v DB ${me.owner})` : ''}` : '–'],
+  ];
+  $('aboutTech').innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v || '')}</dd>`).join('');
+  aboutText = [`Lupa ${a.version || m.version}`, ...rows.map(([k, v]) => `${k}: ${v || ''}`)].join('\n');
+  $('aboutDlg').hidden = false;
+  $('aboutClose').focus();
+}
+
+function closeAbout() {
+  $('aboutDlg').hidden = true;
+}
+
+function bindAbout() {
+  $('brand').onclick = openAbout;
+  $('settingsBtn').onclick = () => api.open_settings();
+  $('aboutClose').onclick = closeAbout;
+  $('aboutCopy').onclick = async () => {
+    const r = await api.copy_text(aboutText);
+    toast(r.ok ? 'Údaje skopírované' : r.error);
+  };
+  $('aboutDlg').addEventListener('mousedown', (e) => { if (e.target === $('aboutDlg')) closeAbout(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('aboutDlg').hidden) { e.stopPropagation(); closeAbout(); }
+  }, true);
 }
 
 // --- obnovenie údajov bez reštartu --------------------------------------------
@@ -2264,6 +2321,7 @@ async function initApp() {
 
 bind();
 bindBell();
+bindAbout();
 bindResizers();
 bindColumns();
 window.addEventListener('pywebviewready', init);

@@ -8,7 +8,7 @@
 <body>
 <header class="topbar">
   <!-- ľavý stĺpec má šírku stromu (--tree-w), hľadanie je presne nad zoznamom (po --detail-w) -->
-  <div class="brand left-col">
+  <div class="brand left-col" id="brand" title="O programe">
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m20 20-4.8-4.8"></path></svg>
     <span class="brand-name">Lupa</span>
   </div>
@@ -20,6 +20,10 @@
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
     </button>
   </div>
+  <!-- nastavenia (okno ui/nastavenia.html) -->
+  <button type="button" class="topbtn" id="settingsBtn" aria-label="Nastavenia" title="Nastavenia">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+  </button>
   <!-- nové zákazky (vytvorenie priečinka za posledné dni), číslo = ešte nevidené -->
   <button type="button" class="bell" id="bell" aria-haspopup="menu" aria-label="Nové zákazky" title="Nové zákazky" hidden>
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
@@ -76,6 +80,8 @@
           <div class="compl" id="compl" hidden></div>
           <div class="machines" id="machines" hidden></div>
         </div>
+        <!-- úplnosť vybraného podpriečinka (diel vo vnorenej zákazke) – pod úplnosťou zákazky -->
+        <div class="compl compl-dir" id="complDir" hidden></div>
         <div class="links" id="links" hidden></div>
       </div>
       <div class="head-right">
@@ -165,6 +171,27 @@
       <button type="submit" class="btn primary">Uložiť</button>
     </div>
   </form>
+</div>
+<!-- O programe (klik na „Lupa“ vľavo hore) -->
+<div class="dlg-back" id="aboutDlg" hidden>
+  <div class="dlg about" role="dialog" aria-labelledby="aboutTitle">
+    <div class="about-head">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m20 20-4.8-4.8"></path></svg>
+      <div>
+        <div class="dlg-title" id="aboutTitle">Lupa <span id="aboutVer"></span></div>
+        <div class="dlg-hint">Prehliadač zákaziek na sieťovom disku – súbory, podobné výkresy, stroje a CNC listy.</div>
+      </div>
+    </div>
+    <dl class="about-list">
+      <dt>Autor</dt><dd>Jozef Duchoň</dd>
+      <dt>Naprogramované s</dt><dd>Claude (Anthropic)</dd>
+    </dl>
+    <dl class="about-list about-tech" id="aboutTech"></dl>
+    <div class="dlg-btns">
+      <button type="button" class="btn" id="aboutCopy" title="Skopírovať údaje (napr. pri hlásení chyby)">Kopírovať údaje</button>
+      <button type="button" class="btn primary" id="aboutClose">Zavrieť</button>
+    </div>
+  </div>
 </div>
 <div class="ctx" id="ctx" role="menu" hidden></div>
 <div class="fmenu" id="fmenu" role="listbox" aria-label="Nájdené zákazky a zákazníci" hidden></div>

@@ -132,13 +132,13 @@ prints(path, size, modified, version, views)   -- odtlačky PDF, views = odtlack
 - Hľadanie podľa časti názvu: `LIKE '%…%'` (pri raste zvážiť FTS5).
 - Odhad veľkosti: ~150 000 súborov → desiatky MB.
 
-## Stav projektu (aktuálne 1.4.1)
+## Stav projektu (aktuálne 1.5.0)
 
 Hotové: verzia 1 (nižšie) + náhľady, galéria, NC/TXT náhľad, kontrola úplnosti, exe, ikona skenu
 pri hodinách, stavový riadok, kontextové menu stromu, podobné výkresy, filter zákazníkov v `lupa.ini`,
 hľadanie čísla zákazky v strome, typy XLS/DOC zvlášť,
 lokálna kópia DB, spúšťač, nové typy, odkazy .lnk, menu zákaziek pod hľadaním (1.3.2).
-Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`, `v1.3.0`, `v1.3.1`, `v1.3.2`, `v1.3.3`, `v1.3.4`, `v1.3.6`, `v1.3.7`, `v1.3.9`, `v1.4.0`, `v1.4.1` (pushnuté na GitHub `origin/main`).
+Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`, `v1.3.0`, `v1.3.1`, `v1.3.2`, `v1.3.3`, `v1.3.4`, `v1.3.6`, `v1.3.7`, `v1.3.9`, `v1.4.0`, `v1.4.1`, `v1.5.0` (pushnuté na GitHub `origin/main`).
 
 **Ostré nasadenie (20.11.2026)**: DB `L:\_Lupa\lupa.db` na sieťovom disku (~180 MB).
 Prvý úplný sken L:\ (ešte skener 1.0 na inom PC) – ~1 h, 33 600+ zákaziek / 237 zákazníkov, bez chýb.
@@ -203,6 +203,22 @@ a `files.owner` toho súboru = kedy a kto robí (`Api._started_jobs`: súbory v 
 zákazky, kde taký súbor vznikol skôr = rozrobené). Ide aj so starou DB. Štítok druhu (HMC / ECAM /
 LIST / ODKAZ), klik = zákazka + označený ten súbor, „len moje“ (`lupa.bell.mine`, len pri Začaté),
 posledná záložka `lupa.bell.tab`. Číslo na zvončeku = nevidené z oboch záložiek, zákazka raz.
+**1.5.0**:
+- **Vnorené zákazky** (Rejlek: `ON000` = staré číslo zákazníka, skutočná zákazka `00055`, diely
+  `101UP7`) – plán A bez zásahu do skenera: stroje za vybraný priečinok s podpriečinkami
+  (`get_machines(job_id, rel)`), pri podpriečinku riadok „V priečinku X:“ s úplnosťou (`_dir_missing`:
+  podstrom + súbory priamo v nadradených priečinkoch). Úplnosť zákazky ostáva za celú zákazku.
+  Plán B (zákazka o úroveň hlbšie podľa ini) používateľ nechce.
+- **O programe** (klik na „Lupa“ vľavo hore): verzia, autor Jozef Duchoň, Claude (Anthropic), cesty,
+  Kopírovať údaje.
+- **Okno Nastavenia** (`nastavenia.py`, `ui/nastavenia.html/.js/.css`, `SettingsApi` v app.py):
+  koliesko v Lupe (druhé okno) alebo ikona skenu „Nastavenia…“ = `Lupa.exe --nastavenia` (len okno).
+  Edituje `config.INI_PATH` (= `L:\_Lupa\lupa.ini`, spoločné): uloží len zmenené, komentáre ostanú,
+  záloha `lupa.ini.bak`. Meniť smie `spravca` (mená Windows) alebo ikona skenu; inak len na čítanie
+  (ochrana pred omylom, nie zabezpečenie). Nové kľúče: `scan_minutes` (ikona skenu, platí od ďalšieho
+  skenu), `zvoncek_dni`, `spravca`. Pravidlá strojov v `[stroje]` / `[stroje_listy]` (skratka = výraz,
+  poradie = priorita; bez sekcie `config.DEFAULT_MACHINES` / `DEFAULT_MACHINE_NAMES`), v okne riadky
+  s ↑↓✕, Predvolené a „Vyskúšať“ (JS RegExp). Lupa číta nastavenia pri štarte (zmena = reštart).
 
 **Na rade (21.11.2026)**:
 - Pomalý štart (16 s cez sieť – meranie `zmeraj_start.py`: počet odtlačkov 8,3 s, úplnosť 4,7 s) →
