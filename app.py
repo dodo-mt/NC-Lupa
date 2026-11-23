@@ -344,16 +344,60 @@ class Api:
         return {"to": sorted(to.values(), key=order), "from": sorted(frm.values(), key=order)}
 
     def get_new_jobs(self, days: float = 1) -> dict:
-        """Zákazky pribudnuté za posledných `days` dní (vytvorenie priečinka) – zvonček.
-        ok = False: DB od staršieho skenera ešte nemá jobs.created."""
-        if not any(r["name"] == "created" for r in self._q("PRAGMA table_info(jobs)")):
-            return {"ok": False, "jobs": []}
+        """Zvonček za posledných `days` dní:
+        jobs    – Nové: zákazka pribudla (vytvorenie priečinka, kto ho založil); ok = False –
+                  DB od staršieho skenera ešte nemá jobs.created
+        started – Začaté: v zákazke vznikol PRVÝ programový súbor (HMC, PPF, CNC list, odkaz .lnk
+                  na staré heslo) – čas a vlastník toho súboru = kto zákazku robí. Ďalší HMC
+                  v rozrobenej zákazke ju znova neukáže. files.created/owner má aj stará DB."""
         since = time.time() - float(days) * 86400
-        rows = self._q(
+        ok = any(r["name"] == "created" for r in self._q("PRAGMA table_info(jobs)"))
+        jobs = self._q(
             "SELECT j.id, j.name, j.created, j.added_by, c.name AS customer FROM jobs j"
             " JOIN customers c ON c.id = j.customer_id"
-            " WHERE j.created >= ? ORDER BY j.created DESC LIMIT 300", (since,))
-        return {"ok": True, "jobs": rows}
+            " WHERE j.created >= ? ORDER BY j.created DESC LIMIT 300", (since,)) if ok else []
+        return {"ok": ok, "jobs": jobs, "started": self._started_jobs(since)}
+
+    def _started_jobs(self, since: float) -> list[dict]:
+        lst, largs = config.list_sql("f", self._has_doclists())
+        start = f"(f.ftype IN ('HMC', 'ECAM') OR f.ext = 'lnk' OR {lst})"
+        # 1. programové súbory vytvorené v okne (created ako prvá podmienka – väčšinu riadkov odreže)
+        rows = self._q(
+            "SELECT f.id AS file_id, f.job_id, f.name AS file, f.ftype, f.ext, f.created, f.owner,"
+            f" p.rel_path AS rel, {lst} AS lst FROM files f JOIN positions p ON p.id = f.position_id"
+            f" WHERE f.created >= ? AND {start}", (*largs, since, *largs))
+        first: dict[int, dict] = {}
+        for r in rows:
+            if r["job_id"] not in first or r["created"] < first[r["job_id"]]["created"]:
+                first[r["job_id"]] = r
+        if not first:
+            return []
+        # 2. zákazky, kde taký súbor vznikol už skôr = rozrobené, nie začaté (index files(job_id))
+        ids = list(first)
+        older = set()
+        for i in range(0, len(ids), 500):
+            part = ids[i:i + 500]
+            older |= {r["job_id"] for r in self._q(
+                f"SELECT DISTINCT f.job_id FROM files f WHERE f.job_id IN ({','.join('?' * len(part))})"
+                f" AND f.created < ? AND {start}", (*part, since, *largs))}
+        out = [r for jid, r in first.items() if jid not in older]
+        if not out:
+            return []
+        out.sort(key=lambda r: -r["created"])
+        out = out[:300]
+        names = {r["id"]: r for r in self._q(
+            "SELECT j.id, j.name, c.name AS customer FROM jobs j JOIN customers c ON c.id = j.customer_id"
+            f" WHERE j.id IN ({','.join('?' * len(out))})", tuple(r["job_id"] for r in out))}
+        res = []
+        for r in out:
+            j = names.get(r["job_id"])
+            if not j:
+                continue
+            kind = "LNK" if r["ext"] == "lnk" else "LIST" if r["lst"] else r["ftype"]
+            res.append({"id": r["job_id"], "name": j["name"], "customer": j["customer"],
+                        "created": r["created"], "owner": r["owner"], "file_id": r["file_id"],
+                        "file": r["file"], "rel": r["rel"], "kind": kind})
+        return res
 
     def get_machines(self, job_id: int) -> list[dict]:
         """Stroje zákazky (stroje.py) – štítky za úplnosťou: hlavičky NC programov, mená a obsah

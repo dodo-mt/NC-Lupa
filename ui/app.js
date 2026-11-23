@@ -1878,10 +1878,14 @@ function renderStatus() {
 }
 
 // --- zvonček „Nové zákazky“ ---------------------------------------------------
-// Zákazky, ktorých priečinok vznikol za posledné dni (jobs.created zo skenera, kto = vlastník
-// priečinka). Číslo = ešte nevidené (pribudli po poslednom otvorení menu) – len v tomto PC.
+// Dve záložky (Api.get_new_jobs):
+//   Nové    – zákazka pribudla (vytvorenie priečinka, kto ho založil; jobs.created zo skenera 1.4.0)
+//   Začaté  – v zákazke vznikol prvý HMC / PPF / CNC list / odkaz .lnk (kto ho vytvoril = kto robí)
+// Číslo = zákazky, ktoré pribudli / začali po poslednom otvorení menu (obe záložky, každá raz).
+// Záložka, počet dní a „len moje“ sa pamätajú v tomto PC.
 const BELL_DAYS = [1, 3, 7, 14];
-let bell = { ok: false, jobs: [] };
+let bell = { ok: false, jobs: [], started: [] };
+let bellShownSeen = 0;   // „nevidené“ pri otvorení menu (zvýraznené, kým je menu otvorené)
 
 function bellDays() {
   const d = Number(lsGet('lupa.bell.days', 1));
@@ -1892,25 +1896,48 @@ function bellSeen() {
   return Number(lsGet('lupa.bell.seen', 0)) || 0;
 }
 
+function bellTab() {
+  return lsGet('lupa.bell.tab', 'new') === 'started' ? 'started' : 'new';
+}
+
+function bellMine() {
+  return lsGet('lupa.bell.mine', '0') === '1' && !!me.owner;
+}
+
+// Začaté – pri „len moje“ len tie, kde prvý programový súbor vytvoril prihlásený používateľ
+function bellStarted() {
+  return bellMine() ? bell.started.filter((j) => j.owner === me.owner) : bell.started;
+}
+
+function bellUnseen(seen) {
+  const ids = new Set();
+  for (const j of bell.jobs) if (j.created > seen) ids.add(j.id);
+  for (const j of bellStarted()) if (j.created > seen) ids.add(j.id);
+  return ids.size;
+}
+
 async function loadBell() {
-  try { bell = await api.get_new_jobs(bellDays()); } catch (e) { bell = { ok: false, jobs: [] }; }
+  try { bell = await api.get_new_jobs(bellDays()); } catch (e) { bell = { ok: false, jobs: [], started: [] }; }
   renderBellBtn();
-  if (!$('bellMenu').hidden) renderBellMenu(bellShownSeen);
+  if (!$('bellMenu').hidden) renderBellMenu();
+}
+
+function daysText(d) {
+  return d === 1 ? 'posledný deň' : `posledných ${d} dní`;
 }
 
 function renderBellBtn() {
   const btn = $('bell');
-  btn.hidden = !bell.ok;
-  const n = bell.jobs.filter((j) => j.created > bellSeen()).length;
+  btn.hidden = !(state.meta && state.meta.db_ok);
+  const n = bellUnseen(bellSeen());
   $('bellN').hidden = !n;
   $('bellN').textContent = n > 99 ? '99+' : String(n);
   btn.classList.toggle('has', n > 0);
-  const d = bellDays();
-  btn.title = `Nové zákazky za ${d === 1 ? 'posledný deň' : `posledných ${d} dní`}: ${bell.jobs.length}` +
-    (n ? ` (nevidené ${n})` : '');
+  btn.title = `Za ${daysText(bellDays())}: nové zákazky ${bell.ok ? bell.jobs.length : '–'}, ` +
+    `začaté ${bellStarted().length}` + (n ? ` (nevidené ${n})` : '');
 }
 
-// Kedy pribudla: dnes / včera s časom, inak dátum
+// Kedy: dnes / včera s časom, inak dátum
 function bellWhen(ts) {
   const d = new Date(ts * 1000);
   const t = fmtDate(ts).slice(11);
@@ -1919,30 +1946,71 @@ function bellWhen(ts) {
   return diff === 0 ? `dnes ${t}` : diff === 1 ? `včera ${t}` : fmtDay(ts);
 }
 
-let bellShownSeen = 0;   // „nevidené“ pri otvorení menu (zvýraznené, kým je menu otvorené)
+// Čím sa začalo: HMC / ECAM ako v zozname, CNC list farbou Excelu, odkaz sivo
+function kindBadge(kind) {
+  if (kind === 'LIST') {
+    const t = state.types.XLS || state.types.OTH;
+    return `<span class="badge" style="background:${t.bg};color:${t.fg}">LIST</span>`;
+  }
+  if (kind === 'LNK') {
+    const t = state.types.OTH;
+    return `<span class="badge" style="background:${t.bg};color:${t.fg}">ODKAZ</span>`;
+  }
+  return badge(kind);
+}
 
-function renderBellMenu(seen) {
+const KIND_NAME = { HMC: 'hyperMILL', ECAM: 'Edgecam', LIST: 'CNC list', LNK: 'odkaz na staré heslo' };
+
+function bellRow(j, i, seen, started) {
+  const f = findJob(j.id);
+  const who = started ? j.owner : j.added_by;
+  const whoTxt = who && who !== '?' ? ownerName(who) : '';
+  const tip = started
+    ? `${j.customer} \\ ${j.name}\nZačaté ${fmtDate(j.created)} – ${KIND_NAME[j.kind] || j.kind}: ${j.rel ? j.rel + '\\' : ''}${j.file}` +
+      (whoTxt ? `\nRobí ${whoTxt}` : '') + '\nKlik = otvoriť zákazku a označiť tento súbor'
+    : `${j.customer} \\ ${j.name}\nPribudla ${fmtDate(j.created)}` + (whoTxt ? `, založil ${whoTxt}` : '');
+  return `<button type="button" class="dd-item fm-item${j.created > seen ? ' unseen' : ''}" data-i="${i}" title="${esc(tip)}">` +
+    `<span class="nm">${esc(j.name)}</span><span class="fm-sub">${esc(j.customer)}</span>` +
+    (started ? `<span class="bm-kind">${kindBadge(j.kind)}</span>` : '') +
+    `<span class="bm-by">${esc(whoTxt)}</span>` +
+    `<span class="bm-when">${esc(bellWhen(j.created))}</span>${f ? complStatus(f.job.missing) : '<span class="st"></span>'}</button>`;
+}
+
+function renderBellMenu() {
   const box = $('bellMenu');
   const d = bellDays();
-  const out = [`<div class="bm-top"><span class="bm-title">Nové zákazky</span><span class="bm-days" title="Za koľko dní dozadu">` +
+  const tab = bellTab();
+  const seen = bellShownSeen;
+  const started = bellStarted();
+  const tabBtn = (key, label, n) =>
+    `<button type="button" data-tab="${key}" class="${tab === key ? 'on' : ''}">${label}<span class="bm-cnt">${n}</span></button>`;
+  const out = [
+    '<div class="bm-top">' +
+    `<span class="bm-seg bm-tabs">${tabBtn('new', 'Nové', bell.ok ? bell.jobs.length : '–')}${tabBtn('started', 'Začaté', started.length)}</span>` +
+    '<span class="bm-seg bm-days" title="Za koľko dní dozadu">' +
     BELL_DAYS.map((x) => `<button type="button" data-days="${x}" class="${x === d ? 'on' : ''}">${x} ${x === 1 ? 'deň' : x <= 4 ? 'dni' : 'dní'}</button>`).join('') +
-    '</span></div>'];
-  if (!bell.jobs.length) {
-    out.push(`<div class="bm-empty">Za ${d === 1 ? 'posledný deň' : `posledných ${d} dní`} nepribudla žiadna zákazka.</div>`);
+    '</span></div>',
+  ];
+  if (tab === 'started') {
+    out.push('<div class="bm-sub"><span>Prvý HMC, PPF, CNC list alebo odkaz na staré heslo v zákazke</span>' +
+      (me.owner ? `<button type="button" class="bm-mine${bellMine() ? ' on' : ''}" data-mine="1" title="Len zákazky, ktoré som začal ja (${esc(ownerName(me.owner))})">` +
+        `<span class="ctx-chk">${bellMine() ? ICON_CHECK : ''}</span>len moje</button>` : '') + '</div>');
+  } else {
+    out.push('<div class="bm-sub"><span>Pribudol priečinok zákazky na disku</span></div>');
   }
-  bell.jobs.forEach((j, i) => {
-    const f = findJob(j.id);
-    const cust = j.customer;
-    out.push(`<button type="button" class="dd-item fm-item${j.created > seen ? ' unseen' : ''}" data-i="${i}" title="${esc(cust)} \\ ${esc(j.name)}\nPribudla ${esc(fmtDate(j.created))}${j.added_by ? `, pridal ${esc(ownerName(j.added_by))}` : ''}">` +
-      `<span class="nm">${esc(j.name)}</span><span class="fm-sub">${esc(cust)}</span>` +
-      `${j.added_by && j.added_by !== '?' ? `<span class="bm-by">${esc(ownerName(j.added_by))}</span>` : ''}` +
-      `<span class="bm-when">${esc(bellWhen(j.created))}</span>${f ? complStatus(f.job.missing) : ''}</button>`);
-  });
-  if (bell.jobs.length >= 300) out.push('<div class="fm-more">… zobrazených najviac 300</div>');
+  const list = tab === 'started' ? started : bell.jobs;
+  if (tab === 'new' && !bell.ok) {
+    out.push('<div class="bm-empty">Nové zákazky ukáže až nový skener (na PC so skenerom spusti znova ikona_skenu.bat).</div>');
+  } else if (!list.length) {
+    out.push(`<div class="bm-empty">Za ${daysText(d)} ${tab === 'started' ? 'sa nezačala žiadna zákazka' : 'nepribudla žiadna zákazka'}.</div>`);
+  }
+  list.forEach((j, i) => out.push(bellRow(j, i, seen, tab === 'started')));
+  if (list.length >= 300) out.push('<div class="fm-more">… zobrazených najviac 300</div>');
   out.push('<div class="fm-hint">Klik = otvoriť v strome · Esc zavrieť</div>');
   box.innerHTML = out.join('');
   const r = $('bell').getBoundingClientRect();
-  const w = Math.min(480, window.innerWidth - 16);
+  const w = Math.min(560, window.innerWidth - 16);
+  box.style.width = `${w}px`;
   box.style.left = `${Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8))}px`;
   box.style.top = `${r.bottom + 6}px`;
   box.hidden = false;
@@ -1950,10 +2018,11 @@ function renderBellMenu(seen) {
 
 function openBell() {
   bellShownSeen = bellSeen();
-  const newest = Math.max(bellShownSeen, ...bell.jobs.map((j) => j.created || 0));
+  const newest = Math.max(bellShownSeen, ...bell.jobs.map((j) => j.created || 0),
+    ...bellStarted().map((j) => j.created || 0));
   lsSet('lupa.bell.seen', String(newest));   // otvorením sú všetky videné (číslo zmizne)
   $('bell').classList.add('open');
-  renderBellMenu(bellShownSeen);
+  renderBellMenu();
   renderBellBtn();
 }
 
@@ -1971,13 +2040,27 @@ function bindBell() {
       await loadBell();
       return;
     }
+    const tb = e.target.closest('[data-tab]');
+    if (tb) { lsSet('lupa.bell.tab', tb.dataset.tab); renderBellMenu(); return; }
+    if (e.target.closest('[data-mine]')) {
+      lsSet('lupa.bell.mine', bellMine() ? '0' : '1');
+      renderBellMenu();
+      renderBellBtn();
+      return;
+    }
     const b = e.target.closest('.fm-item');
     if (!b) return;
-    const j = bell.jobs[Number(b.dataset.i)];
+    const started = bellTab() === 'started';
+    const j = (started ? bellStarted() : bell.jobs)[Number(b.dataset.i)];
     closeBell();
     if (!findJob(j.id)) { toast('Zákazka v strome nie je – obnov údaje (F5)'); return; }
     clearSearchQuiet();
-    await gotoJob(j.id, '');
+    if (started) {
+      state.selFile = j.file_id;   // označiť súbor, ktorým sa začalo
+      await gotoJob(j.id, j.rel || '');
+    } else {
+      await gotoJob(j.id, '');
+    }
   });
   document.addEventListener('mousedown', (e) => {
     if (!$('bellMenu').hidden && !e.target.closest('#bellMenu, #bell')) closeBell();

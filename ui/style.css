@@ -121,13 +121,25 @@ button { font-family: inherit; cursor: pointer; }
   box-shadow: 0 0 0 2px #111827;
 }
 .bell-n[hidden] { display: none; }
-.bell-menu { width: 480px; max-width: calc(100vw - 16px); }
-.bell-menu .bm-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 6px 6px 10px; }
-.bell-menu .bm-title { font-size: 13px; font-weight: 600; }
-.bell-menu .bm-days { display: inline-flex; gap: 2px; padding: 2px; background: #f3f4f6; border-radius: 6px; }
-.bell-menu .bm-days button { border: 0; background: transparent; color: var(--muted); font-size: 12px; padding: 3px 8px; border-radius: 4px; }
-.bell-menu .bm-days button.on { background: #fff; color: var(--text, #111827); font-weight: 600; box-shadow: 0 1px 2px rgba(17, 24, 39, .12); }
+.bell-menu { max-width: calc(100vw - 16px); }
+.bell-menu .bm-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 6px 4px; }
+.bell-menu .bm-seg { display: inline-flex; gap: 2px; padding: 2px; background: #f3f4f6; border-radius: 6px; }
+.bell-menu .bm-seg button { border: 0; background: transparent; color: var(--muted); font-size: 12px; padding: 3px 8px; border-radius: 4px; }
+.bell-menu .bm-seg button.on { background: #fff; color: #111827; font-weight: 600; box-shadow: 0 1px 2px rgba(17, 24, 39, .12); }
+.bell-menu .bm-tabs button { font-size: 13px; padding: 4px 10px; }
+.bell-menu .bm-cnt { margin-left: 6px; font-size: 11px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+.bell-menu .bm-sub { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 26px;
+  padding: 0 6px 4px 10px; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--line-soft); margin-bottom: 2px; }
+.bell-menu .bm-mine { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent;
+  color: #374151; font-size: 12px; padding: 2px 6px; border-radius: 4px; }
+.bell-menu .bm-mine:hover { background: #f3f4f6; }
+.bell-menu .bm-mine .ctx-chk { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px;
+  border: 1px solid #d1d5db; border-radius: 3px; color: var(--accent); }
+.bell-menu .bm-mine.on .ctx-chk { border-color: var(--accent); }
+.bell-menu .bm-mine .ctx-chk svg { width: 11px; height: 11px; }
 .bell-menu .fm-item .nm { min-width: 110px; }
+.bell-menu .fm-item .bm-kind { flex: none; min-width: 52px; }
+.bell-menu .fm-item .bm-kind .badge { font-size: 10px; }
 .bell-menu .fm-item .bm-by { flex: none; min-width: 64px; text-align: right; color: var(--muted); font-size: 12px; }
 .bell-menu .fm-item .st { flex: none; min-width: 78px; text-align: right; }
 .bell-menu .fm-item .bm-when { flex: none; min-width: 74px; text-align: right; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
