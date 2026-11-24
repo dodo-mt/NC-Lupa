@@ -5,6 +5,7 @@ Databázu otvára len na čítanie. Na disku so zákazkami nič nemení.
 import base64
 import json
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -757,12 +758,65 @@ def start_hladat(argv: list[str]) -> str:
     return " ".join(slova).strip()
 
 
+def _volny_port(preferovany: int = 42001) -> int:
+    """Port pre UI server pywebview. Pri private_mode=False je pevný (42001), aby sa pamätal localStorage;
+    ak ho už drží iná Lupa (alebo okno Nastavenia), druhá by ostala bez servera – UI bez CSS a skriptov."""
+    import socket
+    for port in (preferovany, 0):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("127.0.0.1", port))
+                return s.getsockname()[1]
+            except OSError:
+                continue
+    return preferovany
+
+
+_MUTEX = None
+
+
+def _uz_bezi() -> bool:
+    """True, ak už beží iná Lupa (hlavné okno); vtedy jej okno vyvolá do popredia."""
+    global _MUTEX
+    if os.name != "nt":
+        return False
+    import ctypes
+    k32, u32 = ctypes.windll.kernel32, ctypes.windll.user32
+    k32.CreateMutexW.restype = ctypes.c_void_p
+    _MUTEX = k32.CreateMutexW(None, False, "Local\\NC_Lupa_hlavne_okno")
+    if k32.GetLastError() != 183:  # ERROR_ALREADY_EXISTS
+        return False
+    najdene = []
+
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+    def cb(hwnd, _):
+        buf = ctypes.create_unicode_buffer(256)
+        u32.GetWindowTextW(hwnd, buf, 256)
+        t = buf.value
+        if re.match(r"^Lupa \d", t) and "Nastavenia" not in t and u32.IsWindowVisible(hwnd):
+            najdene.append(hwnd)
+        return True
+
+    u32.EnumWindows(cb, 0)
+    for hwnd in najdene:
+        if u32.IsIconic(hwnd):
+            u32.ShowWindow(hwnd, 9)  # SW_RESTORE
+        u32.SetForegroundWindow(hwnd)
+    return True
+
+
 def main():
-    clear_web_cache()
     if "--nastavenia" in sys.argv:   # z ikony skenu: len okno Nastavenia
+        clear_web_cache()
         create_settings_window(from_tray=True)
-        webview.start(debug="--debug" in sys.argv, private_mode=False, storage_path=str(WEB_STORAGE))
+        webview.start(debug="--debug" in sys.argv, private_mode=False, storage_path=str(WEB_STORAGE),
+                      http_port=_volny_port())
         return
+    # Druhý štart nepustíme (rovnaké dáta, port aj cache) – len vyvoláme okno bežiacej Lupy.
+    # Výnimka: --hladat potrebuje nové okno (bežiaca Lupa parameter nedostane).
+    if _uz_bezi() and not start_hladat(sys.argv):
+        return
+    clear_web_cache()
     api = Api(config.DB_PATH)
     window = webview.create_window(
         f"Lupa {config.VERSION}",
@@ -779,6 +833,7 @@ def main():
         debug="--debug" in sys.argv,
         private_mode=False,
         storage_path=str(WEB_STORAGE),
+        http_port=_volny_port(),
     )
 
 

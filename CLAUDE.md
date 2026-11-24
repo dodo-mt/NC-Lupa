@@ -132,7 +132,7 @@ prints(path, size, modified, version, views)   -- odtlačky PDF, views = odtlack
 - Hľadanie podľa časti názvu: `LIKE '%…%'` (pri raste zvážiť FTS5).
 - Odhad veľkosti: ~150 000 súborov → desiatky MB.
 
-## Stav projektu (aktuálne 1.5.1)
+## Stav projektu (aktuálne 1.5.2)
 
 Hotové: verzia 1 (nižšie) + náhľady, galéria, NC/TXT náhľad, kontrola úplnosti, exe, ikona skenu
 pri hodinách, stavový riadok, kontextové menu stromu, podobné výkresy, filter zákazníkov v `lupa.ini`,
@@ -205,6 +205,7 @@ a `files.owner` toho súboru = kedy a kto robí (`Api._started_jobs`: súbory v 
 zákazky, kde taký súbor vznikol skôr = rozrobené). Ide aj so starou DB. Štítok druhu (HMC / ECAM /
 LIST / ODKAZ), klik = zákazka + označený ten súbor, „len moje“ (`lupa.bell.mine`, len pri Začaté),
 posledná záložka `lupa.bell.tab`. Číslo na zvončeku = nevidené z oboch záložiek, zákazka raz.
+**1.5.2**: oprava druhého štartu Lupy (UI bez CSS/skriptov): pywebview pri `private_mode=False` servíruje UI z pevného portu 42001, druhá Lupa ho nezískala. Teraz je hlavné okno jedinečné (mutex `Local\NC_Lupa_hlavne_okno`, druhý štart len vyvolá okno bežiacej Lupy; výnimka `--hladat` otvorí nové okno) a `_volny_port()` vyberie 42001 alebo, ak je obsadený, voľný port (aj pre okno Nastavenia).
 **1.5.1**: parameter príkazového riadku `Lupa.exe --hladat <text>` (z NC Nástrojov: pole zákazky / Hľadať v Lupe) – po načítaní okna
 vyplní hľadanie a spustí ho (`Api.get_start`, `start_hladat` v `app.py`, `initApp` v `ui/app.js`). V NC Nástrojoch stačí v `apps.json`
 pri `lupa` `"argumenty_hladat": "--hladat {text}"`.
