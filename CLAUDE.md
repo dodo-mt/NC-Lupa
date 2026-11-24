@@ -89,12 +89,12 @@ Mapovanie drž na jednom mieste (`config.py`), aby sa dalo ľahko rozšíriť.
 - **UI** (`ui/index.html`, `ui/style.css`, `ui/app.js`): čisté HTML/CSS/JS, bez frameworkov a buildov.
 - **Balenie**: `python build.py` → `dist\Lupa\`: `app\` (Lupa onedir + `version.txt` = verzia + čas
   zostavenia), `Lupa.exe` = spúšťač (`launcher.py`, onefile), `lupa-sken.exe` (onefile), + súbory
-  z `deploy\` a `lupa.ini.example`. Celý priečinok sa skopíruje na `L:\_Lupa\`. Predvolene root = `L:\`,
+  z `deploy\` a `lupa.ini.example`. Celý priečinok sa skopíruje na `L:\_Nastroje\lupa\`. Predvolene root = `L:\`,
   DB = `lupa.db` vedľa exe.
   - **Spúšťač**: onedir zo siete nejde (.NET pywebview odmieta DLL zo sieťového disku), onefile je pomalý
     (rozbaľuje sa pri každom štarte). Spúšťač skopíruje `app\` do `%LOCALAPPDATA%\Lupa\app\<verzia>\`
     (len po novej verzii; každá verzia zvlášť, bežiacu nejde prepísať; staré sa zmažú) a spustí ju
-    s `LUPA_HOME` = priečinok spúšťača → `config.APP_DIR` (lupa.ini, lupa.db na L:\_Lupa).
+    s `LUPA_HOME` = priečinok spúšťača → `config.APP_DIR` (lupa.ini, lupa.db na L:\_Nastroje\lupa).
 - **Automatický sken = ikona pri hodinách** (`tray.py`, `lupa-sken.exe --tray`): sken každú hodinu
   (prvý 2 min po štarte), menu (Skenovať teraz, Úplný sken, Otvoriť Lupu, Otvoriť log, Ukončiť),
   upozornenia Windows (L:\ nedostupný – až pri 2. neúspechu, chyby, nezverejnená DB, nové zákazky,
@@ -105,7 +105,7 @@ Mapovanie drž na jednom mieste (`config.py`), aby sa dalo ľahko rozšíriť.
 - Skener pri chybe čítania priečinka **nič nemaže** (výpadok siete ≠ prázdny priečinok).
 - **Zákazníci v koreni**: `customers` / `exclude` v `lupa.ini` (vzory fnmatch, čiarkou). Skener číta
   `lupa.ini` vedľa programu a potom vedľa DB (`config.scan_settings`) – ikona skenu beží z kópie
-  v `%LOCALAPPDATA%`, spoločné nastavenia sú v `L:\_Lupa\lupa.ini`. `--only` filter obchádza.
+  v `%LOCALAPPDATA%`, spoločné nastavenia sú v `L:\_Nastroje\lupa\lupa.ini`. `--only` filter obchádza.
 - DB sa otvára cez `db.ro_uri()` – `Path.as_uri()` pre sieťovú cestu dá `file://server/...`,
   čo SQLite odmietne („invalid uri authority“); správne je `file:////server/share/...`.
 
@@ -140,7 +140,7 @@ hľadanie čísla zákazky v strome, typy XLS/DOC zvlášť,
 lokálna kópia DB, spúšťač, nové typy, odkazy .lnk, menu zákaziek pod hľadaním (1.3.2).
 Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`, `v1.3.0`, `v1.3.1`, `v1.3.2`, `v1.3.3`, `v1.3.4`, `v1.3.6`, `v1.3.7`, `v1.3.9`, `v1.4.0`, `v1.4.1`, `v1.5.0` (pushnuté na GitHub `origin/main`).
 
-**Ostré nasadenie (20.11.2026)**: DB `L:\_Lupa\lupa.db` na sieťovom disku (~180 MB).
+**Ostré nasadenie (20.11.2026)**: DB `L:\_Nastroje\lupa\lupa.db` na sieťovom disku (~180 MB).
 Prvý úplný sken L:\ (ešte skener 1.0 na inom PC) – ~1 h, 33 600+ zákaziek / 237 zákazníkov, bez chýb.
 Lupa 1.2.0 tam mala prázdne okno (DB na sieti – `db.ro_uri`), opravené v 1.3.0 a overené používateľom.
 
@@ -163,8 +163,10 @@ majú vlastné 4 miesta.
 **1.3.9**: CNC listy podľa obsahu Wordu / Excelu (skener, `listy.py`, tabuľka `doclists`) – v práci
 treba znova `ikona_skenu.bat` (nový skener); kým neprejde dokumenty, platí len meno.
 Pozor: po kopírovaní na L:\ zavrieť bežiacu Lupu (aj na lište), inak ostane stará.
-Potom u používateľa: `dist\Lupa\` → `L:\_Lupa\` (celý priečinok, aj `app\`), na PC so skenerom znova
+Potom u používateľa: `dist\Lupa\` → `L:\_Nastroje\lupa\` (celý priečinok, aj `app\`), na PC so skenerom znova
 `ikona_skenu.bat` (nový skener preradí typy, vyhodí skryté súbory, doplní ciele .lnk – bez úplného skenu).
+**Umiestnenie (24.11.2026)**: Lupa sa presunula z `L:\_Lupa` do `L:\_Nastroje\lupa` (patrí k NC Nástrojom, launcher ju spúšťa
+priamo odtiaľ). Staré odkazy na `L:\_Lupa\Lupa.exe` treba prepísať; `root` v `lupa.ini` je `L:\`, takže skener sa nemení.
 Overiť: ciele odkazov .lnk na sieťovom L:\ (lokálne netestovateľné), menu zákaziek pri `324` na ostrých dátach.
 
 **Podobné výkresy** (bod 5): odtlačky v skeneri + UI hotové (tlačidlo v detaile PDF, výsledok
@@ -213,7 +215,7 @@ posledná záložka `lupa.bell.tab`. Číslo na zvončeku = nevidené z oboch z�
   Kopírovať údaje.
 - **Okno Nastavenia** (`nastavenia.py`, `ui/nastavenia.html/.js/.css`, `SettingsApi` v app.py):
   koliesko v Lupe (druhé okno) alebo ikona skenu „Nastavenia…“ = `Lupa.exe --nastavenia` (len okno).
-  Edituje `config.INI_PATH` (= `L:\_Lupa\lupa.ini`, spoločné): uloží len zmenené, komentáre ostanú,
+  Edituje `config.INI_PATH` (= `L:\_Nastroje\lupa\lupa.ini`, spoločné): uloží len zmenené, komentáre ostanú,
   záloha `lupa.ini.bak`. Meniť smie `spravca` (mená Windows) alebo ikona skenu; inak len na čítanie
   (ochrana pred omylom, nie zabezpečenie). Nové kľúče: `scan_minutes` (ikona skenu, platí od ďalšieho
   skenu), `zvoncek_dni`, `spravca`. Pravidlá strojov v `[stroje]` / `[stroje_listy]` (skratka = výraz,
@@ -276,7 +278,7 @@ posledná záložka `lupa.bell.tab`. Číslo na zvončeku = nevidené z oboch z�
    Na lište filtrov tlačidlo nie je – zapína sa filtrom alebo položkou „Len CNC listy“ (fajka) v menu
    Moje filtre; keď je zapnuté, nad zoznamom je štítok
    „CNC listy ✕“ (klik = vypnúť). Hľadanie to nenahradí: len meno (nie priečinok), slová = AND.
-4. ✅ Exe na `L:\_Lupa\` (`build.py`) + ikona skenu pri hodinách (namiesto Plánovača úloh).
+4. ✅ Exe na `L:\_Nastroje\lupa\` (`build.py`) + ikona skenu pri hodinách (namiesto Plánovača úloh).
 5. ✅ **Nájdi podobné výkresy** – offline obrazové „odtlačky“ PDF (orezať rám a pečiatku), neskôr kombinácia s rozmermi zo STP.
    Metóda: list → pohľady (zhluky čiar) → mriežka 16×16, porovnanie v 8 symetriách, slabší z oboch smerov.
    Na vzorkách: rovnaký výkres / sken / revízia = 1. miesto; náš `drw0001` ↔ výkres zákazníka zatiaľ slabé.
@@ -305,7 +307,7 @@ Schválený návrh UI (maketa): https://claude.ai/artifact/MHEAKvNtdfXvU9EaucAA1
   pri každom skene, aj keď DB nepublikuje.
   **Obnoviť** (vpravo, F5 / Ctrl+R) = načíta znova strom, vlastníkov, počty a zoznam, výber ostane.
   Každých 30 s `Api.check_updates`: nová kópia DB (skener zverejnil) → tlačidlo zmodrie „Nové údaje –
-  Obnoviť“; iná `L:\_Lupa\app\version.txt` ako spustená → oranžovo „Nová verzia Lupy – zavri a spusti znova“.
+  Obnoviť“; iná `L:\_Nastroje\lupa\app\version.txt` ako spustená → oranžovo „Nová verzia Lupy – zavri a spusti znova“.
 - Strom: klik na zákazníka = súbory všetkých jeho zákaziek; pravé tlačidlo = rozbaliť/zbaliť, otvoriť priečinok.
   Klávesnica (fokus v strome): ↑/↓ posun (súbory po 250 ms), ← zbaliť / na nadradený, → rozbaliť /
   na prvý podriadený, Home/End. Otvorený zákazník sa pri rolovaní drží hore (`.cgroup`, sticky).
@@ -348,7 +350,7 @@ neskôr možno (napr. „otvoriť v NC editore“).
 - Pred väčšou zmenou krátko popíš plán, potom implementuj.
 - Malé kroky, po každom kroku nech sa dá aplikácia spustiť a vyskúšať.
 - **Verzia** je v `config.VERSION` (zobrazí sa v UI, menu ikony skenu, logu a vo vlastnostiach exe).
-  Pri vydaní novej verzie pre `L:\_Lupa\` ju zvýš a pridaj git tag `vX.Y.Z`.
+  Pri vydaní novej verzie pre `L:\_Nastroje\lupa\` ju zvýš a pridaj git tag `vX.Y.Z`.
 - `requirements.txt` udržuj aktuálny (pywebview, pywin32, PyMuPDF, numpy, ezdxf, pillow).
 - Konfigurácia (cesta k `L:\`, cesta k DB) v `config.py` / `lupa.ini`, nie natvrdo v kóde.
   Vzor: `lupa.ini.example`; lokálny `lupa.ini` (mimo gitu) ukazuje pri vývoji na `vzorky`.

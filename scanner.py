@@ -622,7 +622,7 @@ def setup_logging(shared_log: Path, verbose: bool):
 # Pracovná kópia DB a publikovanie
 # ---------------------------------------------------------------------------
 # Skener pracuje s lokálnou kópiou (rýchle, žiadne pomalé zápisy cez sieť) a cieľovú
-# DB (napr. L:\_Lupa\lupa.db) nahradí naraz – čitatelia nikdy nevidia rozpracovaný stav.
+# DB (napr. L:\_Nastroje\lupa\lupa.db) nahradí naraz – čitatelia nikdy nevidia rozpracovaný stav.
 # Lupa drží DB otvorenú len počas dotazu, takže výmena súboru prejde.
 
 def work_path(target: Path) -> Path:

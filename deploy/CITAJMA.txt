@@ -3,7 +3,7 @@ LUPA – prehliadač zákaziek na L:\
 
 Spustenie
 ---------
-Dvojklik na  L:\_Lupa\Lupa.exe   (nič sa neinštaluje, nepotrebuje admin práva)
+Dvojklik na  L:\_Nastroje\lupa\Lupa.exe   (nič sa neinštaluje, nepotrebuje admin práva)
 Prvé spustenie trvá pár sekúnd – program sa rozbaľuje.
 Tip: pravým klikom na Lupa.exe -> Odoslať -> Pracovná plocha (vytvoriť odkaz).
 
@@ -28,16 +28,16 @@ Ovládanie
 
 Údaje
 -----
-Databáza:      L:\_Lupa\lupa.db   (aktualizuje sa automaticky, pozri nižšie)
+Databáza:      L:\_Nastroje\lupa\lupa.db   (aktualizuje sa automaticky, pozri nižšie)
 Lokálne dáta:  %LOCALAPPDATA%\Lupa   (náhľady, poloha okna – dá sa kedykoľvek zmazať)
 
 Pre správcu (sken)
 ------------------
-lupa-sken.exe prejde L:\ a zapíše databázu L:\_Lupa\lupa.db.
+lupa-sken.exe prejde L:\ a zapíše databázu L:\_Nastroje\lupa\lupa.db.
   lupa-sken.exe --auto     bežný sken (len zmeny), raz za 7 dní úplný
   lupa-sken.exe --full     úplný sken
 Sken pracuje s lokálnou kópiou a databázu na L:\ vymení naraz, až keď je hotový.
-Log: L:\_Lupa\lupa_scan.log
+Log: L:\_Nastroje\lupa\lupa_scan.log
 
 Automatický sken – ikona pri hodinách: spusti raz  ikona_skenu.bat
   - skopíruje lupa-sken.exe do %LOCALAPPDATA%\Lupa\bin a pridá ho do Po spustení
@@ -50,4 +50,4 @@ Automatický sken – ikona pri hodinách: spusti raz  ikona_skenu.bat
 
 Nastavenia: lupa.ini vedľa exe (vzor lupa.ini.example) – cesta ku koreňu a k databáze,
   ktoré priečinky v koreni L:\ sú zákazníci (customers = [0-9]*, OD*) a čo vynechať (exclude).
-  Skener číta aj lupa.ini vedľa databázy (L:\_Lupa\lupa.ini) – zmena platí od ďalšieho skenu.
+  Skener číta aj lupa.ini vedľa databázy (L:\_Nastroje\lupa\lupa.ini) – zmena platí od ďalšieho skenu.

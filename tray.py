@@ -4,7 +4,7 @@
 - menu: Skenovať teraz, Úplný sken, Otvoriť Lupu, Otvoriť log, stav, Ukončiť
 - upozornenia Windows: L:\\ nedostupný, chyby skenu, zlyhané publikovanie, nové zákazky,
   výsledok ručne spusteného skenu
-Spustenie:  lupa-sken.exe --tray [--root L:\\] [--db L:\\_Lupa\\lupa.db]
+Spustenie:  lupa-sken.exe --tray [--root L:\\] [--db L:\\_Nastroje\\lupa\\lupa.db]
 """
 import logging
 import os

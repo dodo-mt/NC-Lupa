@@ -1,6 +1,6 @@
 """Meranie štartu Lupy – koľko trvajú dotazy, ktoré Lupa robí pri spustení.
 
-Spustenie:  python zmeraj_start.py [cesta k DB]      (predvolene L:\\_Lupa\\lupa.db)
+Spustenie:  python zmeraj_start.py [cesta k DB]      (predvolene L:\\_Nastroje\\lupa\\lupa.db)
 Len číta (DB otvára len na čítanie). Voliteľne skopíruje DB do %TEMP% a zmeria to isté lokálne
 (rozdiel = vplyv siete), kópiu potom zmaže. Stačí čistý Python, nič netreba inštalovať.
 """
@@ -85,7 +85,7 @@ def velkosti(db: Path) -> None:
 
 
 def main() -> None:
-    db = Path(sys.argv[1] if len(sys.argv) > 1 else r"L:\_Lupa\lupa.db")
+    db = Path(sys.argv[1] if len(sys.argv) > 1 else r"L:\_Nastroje\lupa\lupa.db")
     if not db.exists():
         sys.exit(f"DB {db} neexistuje")
     print(f"DB {db}  {db.stat().st_size / 2**20:.0f} MB")

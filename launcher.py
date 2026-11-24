@@ -1,6 +1,6 @@
-"""Spúšťač Lupy (L:\\_Lupa\\Lupa.exe) – skopíruje Lupu do počítača a spustí ju odtiaľ.
+"""Spúšťač Lupy (L:\\_Nastroje\\lupa\\Lupa.exe) – skopíruje Lupu do počítača a spustí ju odtiaľ.
 
-Lupa (onedir, priečinok L:\\_Lupa\\app\\) sa zo sieťového disku spustiť nedá – Windows .NET
+Lupa (onedir, priečinok L:\\_Nastroje\\lupa\\app\\) sa zo sieťového disku spustiť nedá – Windows .NET
 (okno pywebview) odmieta načítať knižnice zo siete. Zostavenie onefile sa síce spustí, ale pri
 každom štarte rozbaľuje ~45 MB, čo je pomalé.
 

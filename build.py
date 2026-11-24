@@ -1,4 +1,4 @@
-"""Zostavenie Lupy do exe (PyInstaller) – výsledok v dist\\Lupa\\ na skopírovanie na L:\\_Lupa\\.
+"""Zostavenie Lupy do exe (PyInstaller) – výsledok v dist\\Lupa\\ na skopírovanie na L:\\_Nastroje\\lupa\\.
 
 Použitie:  .venv\\Scripts\\python.exe build.py
 """

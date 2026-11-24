@@ -1,7 +1,7 @@
-; Skopíruj ako lupa.ini vedľa Lupa.exe (na L:\_Lupa\ je to aj vedľa lupa.db) a uprav.
+; Skopíruj ako lupa.ini vedľa Lupa.exe (na L:\_Nastroje\lupa\ je to aj vedľa lupa.db) a uprav.
 ; lupa.ini sa na git nedáva.
 ; Skener (aj ikona pri hodinách) číta lupa.ini vedľa programu a potom lupa.ini vedľa databázy –
-; ten vedľa databázy má prednosť. Spoločné nastavenia sú teda v L:\_Lupa\lupa.ini.
+; ten vedľa databázy má prednosť. Spoločné nastavenia sú teda v L:\_Nastroje\lupa\lupa.ini.
 
 [lupa]
 ; koreň so zákazkami

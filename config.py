@@ -14,7 +14,7 @@ import listy
 VERSION = "1.5.0"
 
 # Priečinok programu (pri PyInstaller exe = priečinok s exe). Lupa beží z lokálnej kópie
-# v %LOCALAPPDATA% (launcher.py) – spúšťač jej v LUPA_HOME odovzdá svoj priečinok (L:\_Lupa),
+# v %LOCALAPPDATA% (launcher.py) – spúšťač jej v LUPA_HOME odovzdá svoj priečinok (L:\_Nastroje\lupa),
 # kde je lupa.ini a lupa.db.
 if os.environ.get("LUPA_HOME"):
     APP_DIR = Path(os.environ["LUPA_HOME"])
@@ -99,7 +99,7 @@ def scan_settings(db_path: Path) -> dict:
     """Nastavenia skenu: lupa.ini vedľa programu, prepísané lupa.ini vedľa databázy.
 
     Ikona skenu beží z kópie v %LOCALAPPDATA%\\Lupa\\bin – spoločné nastavenia sú preto
-    v L:\\_Lupa\\lupa.ini vedľa DB.
+    v L:\\_Nastroje\\lupa\\lupa.ini vedľa DB.
     """
     ini = _load_ini(INI_PATH, db_path.parent / "lupa.ini")
     return {
@@ -162,7 +162,7 @@ COMPLETENESS = [
 
 
 # CNC listy – pravidlo v listy.py (meno, priečinok PDF, obsah Wordu / Excelu z tabuľky doclists).
-# Lupa: lupa.ini vedľa programu (na L:\_Lupa aj vedľa DB); skener: scan_settings()["listy"].
+# Lupa: lupa.ini vedľa programu (na L:\_Nastroje\lupa aj vedľa DB); skener: scan_settings()["listy"].
 LIST_RULES = listy.Rules(_ini)
 
 

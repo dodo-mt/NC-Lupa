@@ -55,7 +55,7 @@ class Api:
     """
 
     def __init__(self, db_path: Path):
-        self._db_path = db_path           # DB na sieti (L:\_Lupa\lupa.db) – len sa z nej kopíruje
+        self._db_path = db_path           # DB na sieti (L:\_Nastroje\lupa\lupa.db) – len sa z nej kopíruje
         self._copy = dbcopy.LocalCopy(db_path)
         self._idx = None                  # (značka DB, ViewIndex, cesty) – podobné výkresy
         self._idx_lock = threading.Lock()
@@ -122,7 +122,7 @@ class Api:
 
     def check_updates(self) -> dict:
         """Volá UI pravidelne: značka aktuálnej kópie DB (zmena = skener zverejnil novú DB,
-        kópia sa medzitým urobila na pozadí) a nová verzia Lupy na L:\\_Lupa (spúšťač)."""
+        kópia sa medzitým urobila na pozadí) a nová verzia Lupy na L:\\_Nastroje\\lupa (spúšťač)."""
         path = self._copy.path()
         return {"db": path.name if path else None, "offline": self._copy.offline,
                 "app": _new_app_version()}
@@ -675,7 +675,7 @@ WEB_STORAGE = config.LOCAL_DIR / "webview"
 
 
 def _new_app_version() -> str | None:
-    """Verzia Lupy v L:\\_Lupa\\app, ak je iná ako spustená (len pri spustení cez spúšťač –
+    """Verzia Lupy v L:\\_Nastroje\\lupa\\app, ak je iná ako spustená (len pri spustení cez spúšťač –
     beží kópia v %LOCALAPPDATA%, vedľa nej je jej version.txt). Inak None."""
     if not (getattr(sys, "frozen", False) and os.environ.get("LUPA_HOME")):
         return None

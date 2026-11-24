@@ -1,5 +1,5 @@
 ﻿# Ikona Lupa skenu pri hodinách – inštalácia pre aktuálneho používateľa (bez admin práv).
-# Spúšťa sa cez ikona_skenu.bat z priečinka L:\_Lupa\.
+# Spúšťa sa cez ikona_skenu.bat z priečinka L:\_Nastroje\lupa\.
 #  - skopíruje lupa-sken.exe do %LOCALAPPDATA%\Lupa\bin (pri prihlásení ešte nemusí byť L:\ pripojený)
 #  - vytvorí odkaz v priečinku Po spustení (Startup) s cestami na L:\ a databázu
 #  - zruší starú úlohu „Lupa sken“ v Plánovači úloh (ak existuje) a spustí ikonu
@@ -29,7 +29,7 @@ if ($Zrus) {
 
 if (-not (Test-Path $Source)) { throw "Nenasiel sa $Source" }
 if (-not $Root) {
-    # koreň z lupa.ini vedľa exe, inak koreň disku, na ktorom je _Lupa (napr. L:\)
+    # koreň z lupa.ini vedľa exe, inak koreň disku, na ktorom je _Nastroje\lupa (napr. L:\)
     $ini = Join-Path $PSScriptRoot 'lupa.ini'
     $m = if (Test-Path $ini) { Select-String -Path $ini -Pattern '^\s*root\s*=\s*(.+)$' | Select-Object -First 1 }
     $Root = if ($m) { $m.Matches[0].Groups[1].Value.Trim() } else { [IO.Path]::GetPathRoot($PSScriptRoot) }

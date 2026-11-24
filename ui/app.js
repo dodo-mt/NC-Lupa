@@ -2131,7 +2131,7 @@ function bindAbout() {
 // --- obnovenie údajov bez reštartu --------------------------------------------
 // Skener zverejní novú DB → kópia sa na pozadí vymení (dbcopy), strom v okne je ale zo štartu.
 // Každých UPDATE_EVERY ms sa zistí, či je nová kópia (tlačidlo Obnoviť zmodrie) a či je
-// na L:\_Lupa nová verzia Lupy (upozornenie – treba ju zavrieť a spustiť znova).
+// na L:\_Nastroje\lupa nová verzia Lupy (upozornenie – treba ju zavrieť a spustiť znova).
 const UPDATE_EVERY = 30000;
 let dbTag = null;
 let reloading = false;

@@ -1,4 +1,4 @@
-"""Nastavenia Lupy v okne – čítanie a uloženie lupa.ini (L:\\_Lupa\\lupa.ini, spoločné pre všetkých).
+"""Nastavenia Lupy v okne – čítanie a uloženie lupa.ini (L:\\_Nastroje\\lupa\\lupa.ini, spoločné pre všetkých).
 
 Okno (ui/nastavenia.html) otvára koliesko v Lupe alebo ikona skenu („Nastavenia…“ = Lupa.exe
 --nastavenia). Ukladá sa len to, čo sa zmenilo; komentáre a poradie v súbore ostanú, pred zápisom
