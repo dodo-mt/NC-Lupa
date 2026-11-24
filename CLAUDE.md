@@ -132,13 +132,13 @@ prints(path, size, modified, version, views)   -- odtlačky PDF, views = odtlack
 - Hľadanie podľa časti názvu: `LIKE '%…%'` (pri raste zvážiť FTS5).
 - Odhad veľkosti: ~150 000 súborov → desiatky MB.
 
-## Stav projektu (aktuálne 1.5.0)
+## Stav projektu (aktuálne 1.5.1)
 
 Hotové: verzia 1 (nižšie) + náhľady, galéria, NC/TXT náhľad, kontrola úplnosti, exe, ikona skenu
 pri hodinách, stavový riadok, kontextové menu stromu, podobné výkresy, filter zákazníkov v `lupa.ini`,
 hľadanie čísla zákazky v strome, typy XLS/DOC zvlášť,
 lokálna kópia DB, spúšťač, nové typy, odkazy .lnk, menu zákaziek pod hľadaním (1.3.2).
-Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`, `v1.3.0`, `v1.3.1`, `v1.3.2`, `v1.3.3`, `v1.3.4`, `v1.3.6`, `v1.3.7`, `v1.3.9`, `v1.4.0`, `v1.4.1`, `v1.5.0` (pushnuté na GitHub `origin/main`).
+Vydania = git tagy `v1.0`, `v1.1.0`, `v1.2.0`, `v1.3.0`, `v1.3.1`, `v1.3.2`, `v1.3.3`, `v1.3.4`, `v1.3.6`, `v1.3.7`, `v1.3.9`, `v1.4.0`, `v1.4.1`, `v1.5.0`, `v1.5.1` (pushnuté na GitHub `origin/main`).
 
 **Ostré nasadenie (20.11.2026)**: DB `L:\_Nastroje\lupa\lupa.db` na sieťovom disku (~180 MB).
 Prvý úplný sken L:\ (ešte skener 1.0 na inom PC) – ~1 h, 33 600+ zákaziek / 237 zákazníkov, bez chýb.
@@ -205,6 +205,9 @@ a `files.owner` toho súboru = kedy a kto robí (`Api._started_jobs`: súbory v 
 zákazky, kde taký súbor vznikol skôr = rozrobené). Ide aj so starou DB. Štítok druhu (HMC / ECAM /
 LIST / ODKAZ), klik = zákazka + označený ten súbor, „len moje“ (`lupa.bell.mine`, len pri Začaté),
 posledná záložka `lupa.bell.tab`. Číslo na zvončeku = nevidené z oboch záložiek, zákazka raz.
+**1.5.1**: parameter príkazového riadku `Lupa.exe --hladat <text>` (z NC Nástrojov: pole zákazky / Hľadať v Lupe) – po načítaní okna
+vyplní hľadanie a spustí ho (`Api.get_start`, `start_hladat` v `app.py`, `initApp` v `ui/app.js`). V NC Nástrojoch stačí v `apps.json`
+pri `lupa` `"argumenty_hladat": "--hladat {text}"`.
 **1.5.0**:
 - **Vnorené zákazky** (Rejlek: `ON000` = staré číslo zákazníka, skutočná zákazka `00055`, diely
   `101UP7`) – plán A bez zásahu do skenera: stroje za vybraný priečinok s podpriečinkami

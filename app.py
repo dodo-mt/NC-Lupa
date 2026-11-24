@@ -128,6 +128,10 @@ class Api:
                 "app": _new_app_version()}
 
     # --- údaje pre UI ------------------------------------------------------
+    def get_start(self) -> dict:
+        """Parametre z príkazového riadku (napr. z NC Nástrojov): `--hladat <text>` = hneď vyhľadať."""
+        return {"hladat": start_hladat(sys.argv)}
+
     def get_meta(self) -> dict:
         types = [
             {"key": k, "label": label, "bg": bg, "fg": fg}
@@ -739,6 +743,18 @@ def clear_web_cache(storage: Path = WEB_STORAGE):
     for sub in ("Cache", "Code Cache", "GPUCache"):
         for base in storage.glob("EBWebView/*/"):
             shutil.rmtree(base / sub, ignore_errors=True)
+
+
+def start_hladat(argv: list[str]) -> str:
+    """Text za `--hladat` (do ďalšieho `--parametra`; viac slov bez úvodzoviek sa spojí), inak ''."""
+    if "--hladat" not in argv:
+        return ""
+    slova = []
+    for a in argv[argv.index("--hladat") + 1:]:
+        if a.startswith("--"):
+            break
+        slova.append(a)
+    return " ".join(slova).strip()
 
 
 def main():

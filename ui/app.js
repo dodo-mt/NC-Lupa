@@ -2313,6 +2313,13 @@ async function initApp() {
   loadDone();
   renderStatus();
   $('q').focus();
+  try {   // `Lupa.exe --hladat <text>` (napr. z NC Nástrojov): vyplniť hľadanie a spustiť ho
+    const start = await api.get_start();
+    if (start && start.hladat) {
+      $('q').value = start.hladat;
+      $('q').dispatchEvent(new Event('input'));
+    }
+  } catch (e) { /* bez parametrov */ }
   loadBell();
   dbTag = (await api.check_updates()).db;
   checkUpdates();
