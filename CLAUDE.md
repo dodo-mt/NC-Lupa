@@ -4,6 +4,7 @@ Windows aplikácia na prehliadanie a vyhľadávanie zákaziek na sieťovom disku
 Používateľ: CNC programátor (hyperMILL, Heidenhain, Sinumerik). Komunikácia, UI aj komentáre v kóde **po slovensky**.
 
 **Aktuálna verzia: 1.15.1** (`config.VERSION`). História verzií: `CHANGELOG.md`.
+CNC znalosti (stroje, prípony, syntax NC a .pof, disky L:\ R:\, vzorky) sú v osobnom skille `cnc-programy` (`%USERPROFILE%\.claude\skills\cnc-programy`).
 
 ## Cieľ
 
@@ -12,18 +13,13 @@ Rýchlo nájsť súbory zákaziek a podobné diely („ako som to vtedy robil“
 
 ## Štruktúra disku L:\
 
-```
-L:\<Zákazník>\<Zákazka>\[voliteľne 1+ medziúrovne: pozícia / číslo / text]\súbory
-```
-
 - 1. úroveň = zákazník, 2. úroveň = zákazka. Medziúrovne nemajú pevnú hĺbku → **pozícia = skutočný priečinok**
   v zákazke (tabuľka `positions`, koreň zákazky má `rel_path = ''`). Žiadne hádanie.
 - **Skener preskakuje** (zoznamy v `config.py`, pravidlo `config.is_ignored`): priečinky `POF*`, `VNC`, `STOCK`, `3DF`,
   `DEF`, `GEO`; `Thumbs.db`, `desktop.ini`, prípony `.bak .hmc_bak .hyperMILL .dwl .dwl2 .log .tmp .out .err .dep .pof
   .rsf .idx .xpr .m_p .crc .pro`, vzory `*.log.*`, `*_log.xml`, `trail.txt*`, `*.sec*`, `*.frm.*`, `*.lsl.*`, `*.inf.*`.
   `.xml` a `.ini` mimo POF ostávajú. Po zmene pravidla skener zmaže takéto súbory z DB (`drop_ignored`).
-- Staré značenie: zákazník `OD067` (= dnešný `100020`), zákazky `009712` – berú sa bežne.
-- NC programy: podpriečinok `NC\` (po strojoch). Rádovo desaťtisíce zákaziek, pribúda pár denne.
+- Štruktúra `L:\<zákazník>\<zákazka>\[medziúrovne]\súbory`, staré značenie a `NC\` podľa strojov: skill `cnc-programy`. Rádovo desaťtisíce zákaziek, pribúda pár denne.
 
 ## Typy súborov (mapovanie len v `config.py`, málo štítkov je zámer)
 
