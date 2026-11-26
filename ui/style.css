@@ -972,6 +972,16 @@ td.c-sim { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .qp-body .n { flex: none; width: 52px; text-align: right; color: var(--muted); user-select: none; }
 .qp-body .c { color: #6b7280; }
 .qp-body b { color: #1d4ed8; font-weight: 700; }
+.qp-body.qp-img { padding: 12px; background: #e5e7eb; text-align: center; font-family: var(--font); }
+.qp-body.qp-img img { max-width: 100%; height: auto; box-shadow: 0 1px 6px rgba(0,0,0,.25); background: #fff; }
+.qp-body.qp-doc { padding: 16px 24px; font-family: var(--font); font-size: 13.5px; line-height: 1.5; white-space: normal; }
+.qp-body.qp-doc p { margin: 0 0 6px; white-space: pre-wrap; }
+.qp-msg { padding: 40px 24px; text-align: center; color: var(--muted-2); font-family: var(--font); font-size: 14px; }
+.qp-tab { border-collapse: collapse; margin: 6px 0 12px; font-size: 12.5px; }
+.qp-tab td { border: 1px solid #d1d5db; padding: 3px 8px; vertical-align: top; max-width: 420px; white-space: pre-wrap; }
+.qp-sheets { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.qp-sheets span { padding: 2px 10px; border: 1px solid #d1d5db; border-radius: 999px; font-size: 12px; color: var(--muted-2); }
+.qp-sheets span.on { background: var(--accent-soft); border-color: var(--accent); color: #1e3a8a; font-weight: 600; }
 .qp-foot { padding: 6px 16px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted-2); }
 .node .lk { flex: none; display: inline-flex; margin-left: 6px; color: var(--accent); opacity: .7; }
 .bl-label { margin-right: 2px; }

@@ -231,6 +231,16 @@ pod programom riadok na nástroj `T<číslo>  <názov>` (Siemens bez čísla len
 programy, ak ich zákazka má (prepínač v okne). Výstup: Uložiť ako text (dialóg, predvolene Plocha, súbor sa otvorí; `Api.save_text_file`,
 UTF-8 s BOM), Vytlačiť (`window.print()` + tlačový štýl, A4), Kopírovať. Overené na ostrej DB (zákazka s odladenými programami).
 
+**1.11.0**: **Porovnať s odladenou verziou** (kontextové menu NC súboru mimo priečinka odlad*, `Api.compare_with_debugged`: v tej istej
+zákazke program s rovnakým menom, inak rovnakým menom bez prípony, v priečinku odlad*; viac nálezov = výber; porovnanie v NC Editore
+A = tento, B = odladený) a **Medzerník v okne hľadania v obsahu** (rýchly náhľad okna `QUICK_LINES` riadkov okolo nálezu so
+zvýraznením nálezu a hľadaného textu, `ObsahApi.preview`, `Api.get_text_preview(file_id, line)` číta celý súbor do `OBSAH_MAX_MB`).
+
+**1.12.0**: **rýchly náhľad (Medzerník) aj pre PDF, Word a Excel** (`nahlad.py`, `Api.get_doc_preview`): PDF = strany ako obrázok
+(← → strany), .docx/.docm = odseky a tabuľky (text z XML), .xlsx/.xlsm = tabuľka listu (← → listy, najviac 300 × 40), starý .doc/.xls =
+náhľad z Windows, ak existuje (všeobecná ikona sa nepočíta), inak správa. Bez Office, bez nových knižníc. **↑ ↓ v náhľade = ďalší /
+predchádzajúci súbor v zozname** (preskočí typy bez náhľadu, výber v zozname ide s ním). Overené na ostrých súboroch (PDF, docx, xlsx).
+
 **Ďalšie možné kroky**: STL – v práci ho Windows už ukazuje (doplnok), vlastné netreba.
 **Náhľad STP – odložené** (skúška 21.11.2026 mimo projektu): gmsh/OpenCascade načítal STP a rozmery,
 ale vykreslil len 17/47 vzoriek (zlyháva sieť trojuholníkov hlavne pri dieloch z Crea, pády,

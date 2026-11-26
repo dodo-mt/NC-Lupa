@@ -12,6 +12,8 @@ import subprocess
 import sys
 import threading
 import time
+import zipfile
+from xml.etree import ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -21,6 +23,7 @@ import config
 import db
 import dbcopy
 import editor
+import nahlad
 import nastroje
 import obsah
 import thumbs
@@ -410,8 +413,38 @@ class Api:
             "SELECT DISTINCT f.job_id FROM files f JOIN positions p ON p.id = f.position_id"
             f" WHERE f.ftype = 'NC' AND {cond}", args)}
 
-    def get_text_preview(self, file_id: int) -> dict:
-        """Rýchly náhľad (medzerník) textového súboru: NC program alebo txt, prvých QUICK_LINES riadkov."""
+    def get_doc_preview(self, file_id: int, page: int = 0, sheet: int = 0) -> dict:
+        """Rýchly náhľad (medzerník) PDF, Wordu a Excelu (nahlad.py). PDF: strana `page` ako PNG; .docx: odseky a tabuľky;
+        .xlsx: list `sheet` ako tabuľka; staré .doc / .xls: náhľad z Windows (prvá strana), ak je."""
+        rows = self._q("SELECT name, path, ftype, ext FROM files WHERE id = ?", (file_id,))
+        if not rows:
+            return {"ok": False, "error": "Súbor nie je v databáze."}
+        f = rows[0]
+        zaklad = {"ok": True, "name": f["name"], "path": f["path"], "ftype": f["ftype"]}
+        ext = f["ext"]
+        try:
+            if f["ftype"] == "PDF":
+                png, n = nahlad.pdf_strana(f["path"], int(page))
+                return {**zaklad, "kind": "pdf", "pages": n, "page": max(0, min(int(page), n - 1)),
+                        "src": "data:image/png;base64," + base64.b64encode(png).decode("ascii")}
+            if ext in ("docx", "docm"):
+                return {**zaklad, "kind": "word", **nahlad.word(f["path"])}
+            if ext in ("xlsx", "xlsm"):
+                return {**zaklad, "kind": "excel", **nahlad.excel(f["path"], int(sheet))}
+            if f["ftype"] in ("DOC", "XLS"):                       # starý binárny formát: náhľad z Windows
+                r = thumbs.get_thumb(f["path"], f["ftype"], "l")
+                if r["ok"] and r.get("kind") != "icon":            # všeobecná ikona typu nie je náhľad
+                    data = Path(r.pop("file")).read_bytes()
+                    return {**zaklad, "kind": "obrazok", "src": "data:image/png;base64," + base64.b64encode(data).decode("ascii")}
+                return {"ok": False, "error": "Starý formát (.doc / .xls) – náhľad nie je k dispozícii, otvor súbor."}
+        except (OSError, ValueError, KeyError, zipfile.BadZipFile, ET.ParseError, RuntimeError) as e:
+            return {"ok": False, "error": f"Náhľad sa nepodarilo vytvoriť: {e}"}
+        return {"ok": False, "error": "Rýchly náhľad je pre NC programy, textové súbory, PDF, Word a Excel."}
+
+    def get_text_preview(self, file_id: int, line: int | None = None) -> dict:
+        """Rýchly náhľad (medzerník) textového súboru: NC program alebo txt, prvých QUICK_LINES riadkov.
+        S `line` (nález z hľadania v obsahu) sa číta celý súbor a vráti sa okno QUICK_LINES riadkov okolo nálezu;
+        `first` = číslo prvého vráteného riadku (od 1)."""
         rows = self._q("SELECT name, path, ftype, ext FROM files WHERE id = ?", (file_id,))
         if not rows:
             return {"ok": False, "error": "Súbor nie je v databáze."}
@@ -419,15 +452,20 @@ class Api:
         if f["ftype"] != "NC" and f["ext"] not in thumbs.TEXT_EXTS:
             return {"ok": False, "error": "Rýchly náhľad je len pre NC programy a textové súbory."}
         try:
+            limit_b = config.OBSAH_MAX_MB * 1048576 if line else QUICK_BYTES
             with open(f["path"], "rb") as fh:
-                raw = fh.read(QUICK_BYTES + 1)
+                raw = fh.read(limit_b + 1)
         except OSError as e:
             return {"ok": False, "error": f"Súbor sa nedá prečítať: {e.strerror or e}"}
-        orezane = len(raw) > QUICK_BYTES
-        lines = obsah.dekoduj(raw[:QUICK_BYTES]).splitlines()
-        if len(lines) > QUICK_LINES:
-            lines, orezane = lines[:QUICK_LINES], True
-        return {"ok": True, "name": f["name"], "path": f["path"], "ftype": f["ftype"], "lines": lines,
+        orezane = len(raw) > limit_b
+        lines = obsah.dekoduj(raw[:limit_b]).splitlines()
+        first = 1
+        if line and line > QUICK_LINES // 2:
+            first = max(1, min(int(line) - QUICK_LINES // 2, max(1, len(lines) - QUICK_LINES + 1)))
+        okno = lines[first - 1:first - 1 + QUICK_LINES]
+        if first > 1 or first - 1 + len(okno) < len(lines):
+            orezane = True
+        return {"ok": True, "name": f["name"], "path": f["path"], "ftype": f["ftype"], "lines": okno, "first": first,
                 "more": orezane, "limit": QUICK_LINES}
 
     def _linked_jobs(self) -> set[int]:
@@ -868,6 +906,31 @@ class Api:
                              "riadení zvyčajne nedáva zmysel.")
         return r
 
+    def compare_with_debugged(self, file_id: int) -> dict:
+        """NC program ↔ odladená verzia: v tej istej zákazke hľadá program s rovnakým menom (inak rovnakým menom bez
+        prípony) v priečinku odlad*. Jediný nález = porovnanie v NC Editore (A = tento, B = odladený); viac nálezov =
+        `vyber` (UI sa opýta a zavolá compare_in_editor)."""
+        r = self._q("SELECT f.id, f.name, f.job_id, f.ftype, p.rel_path AS folder FROM files f"
+                    " JOIN positions p ON p.id = f.position_id WHERE f.id = ?", (int(file_id),))
+        if not r or r[0]["ftype"] != "NC":
+            return {"ok": False, "error": "Porovnanie s odladenou verziou je len pre NC programy."}
+        f = r[0]
+        if config.ODLADENE.je_odladene(f["folder"]):
+            return {"ok": False, "error": "Tento program je už v odladenom priečinku."}
+        odl, oargs = config.ODLADENE.sql("p")
+        kand = self._q("SELECT f.id, f.name, p.rel_path AS folder FROM files f JOIN positions p ON p.id = f.position_id"
+                       f" WHERE f.job_id = ? AND f.ftype = 'NC' AND f.id <> ? AND {odl} ORDER BY f.modified DESC",
+                       [f["job_id"], f["id"], *oargs])
+        nazov, stem = f["name"].casefold(), Path(f["name"]).stem.casefold()
+        zhody = ([k for k in kand if k["name"].casefold() == nazov]
+                 or [k for k in kand if Path(k["name"]).stem.casefold() == stem])
+        if not zhody:
+            return {"ok": False, "error": "V zákazke sa nenašiel odladený program s rovnakým menom (priečinok odlad*)."}
+        if len(zhody) > 1:
+            return {"ok": True, "vyber": [{"id": k["id"], "name": k["name"], "folder": k["folder"]} for k in zhody]}
+        res = self.compare_in_editor([f["id"], zhody[0]["id"]])
+        return {**res, "b": zhody[0]["name"], "folder": zhody[0]["folder"]}
+
     def open_folder(self, file_id: int | None = None, folder: str | None = None) -> dict:
         """Otvorí Prieskumník – pri súbore ho v priečinku označí."""
         if file_id is not None:
@@ -1028,6 +1091,10 @@ class ObsahApi:
 
     def compare_in_editor(self, ids: list, lines: list | None = None) -> dict:
         return self._main.compare_in_editor(ids, lines)
+
+    def preview(self, file_id: int, line: int | None = None) -> dict:
+        """Rýchly náhľad programu (medzerník) na nájdenom riadku."""
+        return self._main.get_text_preview(file_id, line)
 
     def open_folder(self, file_id: int) -> dict:
         return self._main.open_folder(file_id=file_id)

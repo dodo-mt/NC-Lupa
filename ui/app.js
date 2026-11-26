@@ -665,6 +665,21 @@ function onFileContext(e) {
   selectFile(id);
   const items = [{ title: f.name }, ['Otvoriť', () => openFile(f.id)]];
   if (f.ftype === 'NC') items.push(['Otvoriť v NC Editore', async () => { const r = await api.open_in_editor(f.id); if (r && r.ok === false) toast(r.error); else if (r && r.note) toast(r.note); }]);
+  if (f.ftype === 'NC' && !f.odl) {
+    items.push(['Porovnať s odladenou verziou v NC Editore', async () => {
+      const r = await api.compare_with_debugged(f.id);
+      if (!r.ok) { toast(r.error); return; }
+      if (r.vyber) {                                                   // viac odladených verzií – opýtať sa
+        showMenu({ clientX: e.clientX, clientY: e.clientY }, [{ title: 'Odladená verzia na porovnanie' },
+          ...r.vyber.map((v) => [`${v.name}   [${v.folder}]`, async () => {
+            const x = await api.compare_in_editor([f.id, v.id]);
+            toast(x.ok ? (x.warn || `Porovnanie otvorené: ${f.name} ↔ ${v.name}`) : x.error);
+          }])]);
+        return;
+      }
+      toast(r.warn || `Porovnanie otvorené: ${f.name} ↔ ${r.b}`);
+    }]);
+  }
   if (f.ftype === 'NC') {
     if (cmpIds.length === 2) items.push([`Porovnať označené (A ↔ B) v NC Editore`, () => compareFiles(cmpIds)]);
     else if (cmpIds.length === 1 && cmpIds[0] !== f.id) items.push(['Porovnať s označeným (A) v NC Editore', () => compareFiles([cmpIds[0], f.id])]);
@@ -1293,10 +1308,15 @@ function bindToolList() {
   }, true);
 }
 
-// --- rýchly náhľad textu (Medzerník) ---------------------------------------------------------
-// NC program a txt: veľké okno s číslami riadkov, komentáre sivo, kľúčové slová zvýraznené. Medzerník / Esc zavrie.
+// --- rýchly náhľad (Medzerník) -----------------------------------------------------------------
+// NC program a txt: čísla riadkov, komentáre sivo, kľúčové slová tučne. PDF: strana ako obrázok (← → strany).
+// Word: odseky a tabuľky, Excel: tabuľka listu (← → listy). Šípky hore / dole = ďalší / predchádzajúci súbor v zozname.
+// Medzerník / Esc zavrie. Presný vzhľad dokumentov to nie je (len obsah).
 const QP_KW = /TOOL\s+CALL|TOOL\s+DEF|CYCL\s+DEF|CALL\s+LBL|CALL\s+PGM|BEGIN\s+PGM|END\s+PGM|\bT\s*=\s*"[^"]*"|\bM0?6\b|\bM30\b|\bM2\b|GROUP_BEGIN|CYCLE\d+/g;
+const QP_TYPY = ['NC', 'TXT', 'PDF', 'DOC', 'XLS'];
 let qpFile = null;
+let qpStav = { page: 0, sheet: 0 };
+let qpTok = 0;
 
 function qpLine(t) {
   const i = t.indexOf(';');
@@ -1312,26 +1332,88 @@ function qpLine(t) {
   return i >= 0 ? out + `<span class="c">${esc(t.slice(i))}</span>` : out;
 }
 
+const qpTabulka = (riadky) => `<table class="qp-tab"><tbody>${riadky.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+
+function qpPatka(r) {
+  if (r.kind === 'pdf') return `Strana ${r.page + 1} z ${r.pages}` + (r.pages > 1 ? ' · ← → listovanie po stranách' : '') + ' · ↑ ↓ ďalší súbor';
+  if (r.kind === 'excel') return `List „${r.harky[r.harok]}“ (${r.harok + 1} z ${r.harky.length})` + (r.harky.length > 1 ? ' · ← → listy' : '')
+    + (r.orezane ? ` · zobrazených prvých ${r.riadky.length} riadkov` : '') + ' · ↑ ↓ ďalší súbor';
+  if (r.kind === 'word') return (r.orezane ? 'Zobrazená len časť dokumentu · ' : '') + 'Text dokumentu bez formátovania · ↑ ↓ ďalší súbor';
+  if (r.kind === 'obrazok') return 'Náhľad z Windows (prvá strana) · ↑ ↓ ďalší súbor';
+  return r.more ? `Zobrazených prvých ${r.limit.toLocaleString('sk-SK')} riadkov – celý program otvor v NC Editore · ↑ ↓ ďalší súbor`
+    : `${r.lines.length.toLocaleString('sk-SK')} riadkov · ↑ ↓ ďalší súbor`;
+}
+
+// Načíta a vykreslí náhľad súboru f; vráti false, ak sa nedá (správa je v okne alebo toast)
+async function qpLoad(f, page = 0, sheet = 0) {
+  const tok = ++qpTok;
+  const text = f.ftype === 'NC' || f.ftype === 'TXT';
+  const r = text ? await api.get_text_preview(f.id) : await api.get_doc_preview(f.id, page, sheet);
+  if (tok !== qpTok) return false;
+  qpFile = f;
+  qpStav = { page: r.page || 0, sheet: r.harok || 0 };
+  $('qpName').textContent = f.name;
+  $('qpPath').textContent = f.path;
+  $('qpEditor').hidden = f.ftype !== 'NC';
+  const body = $('qpBody');
+  body.className = 'qp-body';
+  if (!r.ok) {
+    body.innerHTML = `<div class="qp-msg">${esc(r.error)}</div>`;
+    $('qpFoot').textContent = '↑ ↓ ďalší súbor';
+    return false;
+  }
+  if (r.kind === 'pdf' || r.kind === 'obrazok') {
+    body.classList.add('qp-img');
+    body.innerHTML = `<img src="${r.src}" alt="">`;
+  } else if (r.kind === 'word') {
+    body.classList.add('qp-doc');
+    body.innerHTML = r.bloky.map((b) => (b.typ === 'tab' ? qpTabulka(b.riadky) : `<p>${esc(b.text) || '&nbsp;'}</p>`)).join('');
+  } else if (r.kind === 'excel') {
+    body.classList.add('qp-doc');
+    body.innerHTML = (r.harky.length > 1 ? `<div class="qp-sheets">${r.harky.map((n, i) => `<span class="${i === r.harok ? 'on' : ''}">${esc(n)}</span>`).join('')}</div>` : '')
+      + (r.riadky.length ? qpTabulka(r.riadky) : '<div class="qp-msg">List je prázdny.</div>');
+  } else {
+    const first = r.first || 1;
+    body.innerHTML = r.lines.map((t, i) => `<div class="ln"><span class="n">${first + i}</span><span>${qpLine(t)}</span></div>`).join('');
+  }
+  $('qpFoot').textContent = qpPatka(r);
+  body.scrollTop = 0;
+  return true;
+}
+
 async function openQuickPreview() {
   const f = state.files.find((x) => x.id === state.selFile);
-  if (!f || (f.ftype !== 'NC' && f.ftype !== 'TXT')) return;
-  const r = await api.get_text_preview(f.id);
-  if (!r.ok) { toast(r.error); return; }
-  qpFile = f;
-  $('qpName').textContent = r.name;
-  $('qpPath').textContent = r.path;
-  $('qpEditor').hidden = f.ftype !== 'NC';
-  $('qpBody').innerHTML = r.lines.map((t, i) => `<div class="ln"><span class="n">${i + 1}</span><span>${qpLine(t)}</span></div>`).join('');
-  $('qpFoot').textContent = r.more ? `Zobrazených prvých ${r.limit.toLocaleString('sk-SK')} riadkov – celý program otvor v NC Editore.`
-    : `${r.lines.length.toLocaleString('sk-SK')} riadkov`;
+  if (!f || !QP_TYPY.includes(f.ftype)) return;
   $('qp').hidden = false;
-  $('qpBody').scrollTop = 0;
+  if (!(await qpLoad(f)) && $('qpBody').innerHTML === '') $('qp').hidden = true;
 }
 
 function closeQuickPreview() {
   $('qp').hidden = true;
   $('qpBody').innerHTML = '';
   qpFile = null;
+  qpTok++;
+}
+
+// ↑ ↓: ďalší / predchádzajúci súbor v zozname (výber v zozname ide s ním); preskočí typy bez rýchleho náhľadu
+async function qpNavigate(krok) {
+  if (!qpFile) return;
+  let i = state.view.findIndex((x) => x.id === qpFile.id);
+  if (i < 0) return;
+  for (i += krok; i >= 0 && i < state.view.length; i += krok) {
+    if (QP_TYPY.includes(state.view[i].ftype)) {
+      selectFile(state.view[i].id, true);
+      await qpLoad(state.view[i]);
+      return;
+    }
+  }
+}
+
+// ← →: strany PDF alebo listy Excelu
+async function qpListuj(krok) {
+  if (!qpFile) return;
+  if (qpFile.ftype === 'PDF') await qpLoad(qpFile, Math.max(0, qpStav.page + krok));
+  else if (qpFile.ftype === 'XLS') await qpLoad(qpFile, 0, Math.max(0, qpStav.sheet + krok));
 }
 
 function bindQuickPreview() {
@@ -1347,6 +1429,8 @@ function bindQuickPreview() {
     const inField = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement && document.activeElement.tagName);
     if (!$('qp').hidden) {
       if (e.key === ' ' || e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeQuickPreview(); }
+      else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); qpNavigate(e.key === 'ArrowDown' ? 1 : -1); }
+      else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); e.stopPropagation(); qpListuj(e.key === 'ArrowRight' ? 1 : -1); }
       return;
     }
     if (e.key === ' ' && !inField && !e.ctrlKey && !e.altKey && !e.metaKey && state.selFile != null && $('aboutDlg').hidden) {

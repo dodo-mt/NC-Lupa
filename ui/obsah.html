@@ -64,6 +64,17 @@
   <span class="ob-msg" id="obMsg"></span>
   <button type="button" class="btn" id="obClose">Zavrieť</button>
 </footer>
+<div class="qp-back" id="obQp" hidden>
+  <div class="qp-box" role="dialog" aria-modal="true" aria-labelledby="obQpName">
+    <div class="qp-head">
+      <div class="qp-title"><div class="qp-name" id="obQpName"></div><div class="qp-path" id="obQpPath"></div></div>
+      <button type="button" class="btn" id="obQpEditor" title="Otvoriť program v NC Editore na tomto riadku">Otvoriť v NC Editore</button>
+      <button type="button" class="btn" id="obQpClose" title="Zavrieť (Medzerník alebo Esc)">Zavrieť</button>
+    </div>
+    <div class="qp-body" id="obQpBody"></div>
+    <div class="qp-foot" id="obQpFoot"></div>
+  </div>
+</div>
 <div class="ob-dlg" id="obDlg" hidden role="dialog" aria-modal="true" aria-labelledby="obDlgT">
   <div class="ob-dlg-box">
     <div class="ob-dlg-t" id="obDlgT">Dlhé hľadanie</div>

@@ -281,6 +281,39 @@ async function act(fn) {
   if (r && r.ok === false) msg(r.error);
 }
 
+// Rýchly náhľad programu (medzerník) na nájdenom riadku: okno okolo nálezu, nález zvýraznený, hľadaný text označený
+let qpHit = null;
+function qpRiadok(t) {
+  const i = t.indexOf(';');
+  const kod = i >= 0 ? t.slice(0, i) : t;
+  return highlight(kod) + (i >= 0 ? `<span class="c">${highlight(t.slice(i))}</span>` : '');
+}
+
+async function openPreview() {
+  const h = cur();
+  if (!h) return;
+  const r = await api.preview(h.file_id, h.line);
+  if (!r.ok) { msg(r.error); return; }
+  qpHit = h;
+  $('obQpName').textContent = `${r.name}  ·  nález na riadku ${h.line}`;
+  $('obQpPath').textContent = r.path;
+  $('obQpBody').innerHTML = r.lines.map((t, i) => {
+    const n = r.first + i;
+    return `<div class="ln${n === h.line ? ' hit' : ''}"><span class="n">${n}</span><span>${qpRiadok(t)}</span></div>`;
+  }).join('');
+  $('obQpFoot').textContent = r.more ? `Zobrazených ${r.lines.length.toLocaleString('sk-SK')} riadkov okolo nálezu – celý program otvor v NC Editore.`
+    : `${r.lines.length.toLocaleString('sk-SK')} riadkov`;
+  $('obQp').hidden = false;
+  const el = $('obQpBody').querySelector('.hit');
+  if (el) el.scrollIntoView({ block: 'center' });
+}
+
+function closePreview() {
+  $('obQp').hidden = true;
+  $('obQpBody').innerHTML = '';
+  qpHit = null;
+}
+
 // NC Editor na nájdenom riadku (bez NC Editora sa súbor otvorí predvoleným programom)
 async function openEditor() {
   const h = cur();
@@ -348,8 +381,21 @@ async function boot() {
   $('obFolder').onclick = () => act((h) => api.open_folder(h.file_id));
   $('obCopy').onclick = () => act(async (h) => { const r = await api.copy_text(h.path); msg(r.ok ? 'Cesta skopírovaná' : r.error); return r; });
   $('obClose').onclick = () => api.close();
+  $('obQpClose').onclick = closePreview;
+  $('obQpEditor').onclick = async () => {
+    if (!qpHit) return;
+    const r = await api.open_in_editor(qpHit.file_id, qpHit.line);
+    if (r && r.ok === false) msg(r.error);
+  };
+  $('obQp').addEventListener('mousedown', (e) => { if (e.target === $('obQp')) closePreview(); });
   document.addEventListener('keydown', (e) => {
+    if (!$('obQp').hidden && (e.key === 'Escape' || e.key === ' ')) { e.preventDefault(); e.stopPropagation(); closePreview(); return; }
     if (e.key === 'Escape' && !$('obDlg').hidden) { $('obDlgNo').click(); return; }
+    if (e.key === ' ' && !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName) && $('obDlg').hidden && selIdx >= 0) {
+      e.preventDefault();
+      openPreview();
+      return;
+    }
     if (e.key === 'Escape') { if (running) stop(); else api.close(); return; }
     const inField = ['INPUT', 'SELECT'].includes(document.activeElement.tagName);
     if (!inField && hits.length) {
