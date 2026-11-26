@@ -19,6 +19,7 @@ import webview
 import config
 import db
 import dbcopy
+import editor
 import obsah
 import thumbs
 import winstate
@@ -687,6 +688,20 @@ class Api:
         except OSError as e:
             return {"ok": False, "error": str(e)}
 
+    def open_in_editor(self, file_id: int, line: int | None = None) -> dict:
+        """NC program v NC Editore (od verzie 2026.11.26-11 aj na riadku `line`). Bez NC Editora sa súbor otvorí
+        predvoleným programom; `line` v odpovedi = kurzor sa nastaví na riadok."""
+        path = self._known_file(file_id)
+        if not path:
+            return {"ok": False, "error": "Súbor nie je v databáze."}
+        if not os.path.exists(path):
+            return {"ok": False, "error": f"Súbor už neexistuje:\n{path}"}
+        r = editor.otvor(path, line)
+        if r["ok"]:
+            return r
+        res = self.open_file(file_id)
+        return {**res, "fallback": True, "note": r["error"]}
+
     def open_folder(self, file_id: int | None = None, folder: str | None = None) -> dict:
         """Otvorí Prieskumník – pri súbore ho v priečinku označí."""
         if file_id is not None:
@@ -821,6 +836,9 @@ class ObsahApi:
 
     def open_file(self, file_id: int) -> dict:
         return self._main.open_file(file_id)
+
+    def open_in_editor(self, file_id: int, line: int | None = None) -> dict:
+        return self._main.open_in_editor(file_id, line)
 
     def open_folder(self, file_id: int) -> dict:
         return self._main.open_folder(file_id=file_id)

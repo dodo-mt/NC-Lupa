@@ -11,7 +11,7 @@ from pathlib import Path
 import listy
 
 # Verzia aplikácie – zvyšovať pri každom vydaní (zobrazuje sa v UI, ikone skenu, logu a vo vlastnostiach exe)
-VERSION = "1.6.0"
+VERSION = "1.6.1"
 
 # Priečinok programu (pri PyInstaller exe = priečinok s exe). Lupa beží z lokálnej kópie
 # v %LOCALAPPDATA% (launcher.py) – spúšťač jej v LUPA_HOME odovzdá svoj priečinok (L:\_Nastroje\lupa),

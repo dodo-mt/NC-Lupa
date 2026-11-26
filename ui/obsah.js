@@ -211,7 +211,7 @@ function stop() {
 // --- výber riadka a akcie ---------------------------------------------------------------
 function enableActions() {
   const on = selIdx >= 0;
-  ['obOpen', 'obTree', 'obFolder', 'obCopy'].forEach((id) => { $(id).disabled = !on; });
+  ['obEditor', 'obOpen', 'obTree', 'obFolder', 'obCopy'].forEach((id) => { $(id).disabled = !on; });
 }
 function selectRow(i) {
   selIdx = i;
@@ -226,6 +226,17 @@ async function act(fn) {
   if (!h) return;
   const r = await fn(h);
   if (r && r.ok === false) msg(r.error);
+}
+
+// NC Editor na nájdenom riadku (bez NC Editora sa súbor otvorí predvoleným programom)
+async function openEditor() {
+  const h = cur();
+  if (!h) return;
+  const r = await api.open_in_editor(h.file_id, h.line);
+  if (r.ok === false) msg(r.error);
+  else if (r.note) msg(r.note + ' Súbor sa otvoril predvoleným programom.');
+  else if (!r.line) msg('Tento NC Editor ešte nevie otvoriť riadok – súbor sa otvoril od začiatku (aktualizuj NC Editor).');
+  else msg(`Otvorené v NC Editore, riadok ${h.line}`);
 }
 
 // --- potvrdzovací dialóg ------------------------------------------------------------------
@@ -269,7 +280,8 @@ async function boot() {
   ['obDays', 'obMine'].forEach((id) => $(id).addEventListener('change', updateEstimate));
   document.querySelectorAll('input[name="obMode"]').forEach((r) => r.addEventListener('change', () => { $('obQ').placeholder = r.value === 'regex' && r.checked ? 'Regulárny výraz, napr. TOOL CALL (12|13)' : 'Hľadaný text v NC programoch, napr. TOOL CALL 25 alebo M6'; }));
   $('obRows').addEventListener('click', (e) => { const tr = e.target.closest('tr'); if (tr) selectRow(Number(tr.dataset.i)); });
-  $('obRows').addEventListener('dblclick', (e) => { const tr = e.target.closest('tr'); if (tr) { selectRow(Number(tr.dataset.i)); act((h) => api.show_in_tree(h.file_id)); } });
+  $('obRows').addEventListener('dblclick', (e) => { const tr = e.target.closest('tr'); if (tr) { selectRow(Number(tr.dataset.i)); openEditor(); } });
+  $('obEditor').onclick = openEditor;
   $('obOpen').onclick = () => act((h) => api.open_file(h.file_id));
   $('obTree').onclick = () => act((h) => api.show_in_tree(h.file_id));
   $('obFolder').onclick = () => act((h) => api.open_folder(h.file_id));
@@ -282,7 +294,7 @@ async function boot() {
     if (!inField && hits.length) {
       if (e.key === 'ArrowDown') { e.preventDefault(); selectRow(Math.min(hits.length - 1, selIdx + 1)); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); selectRow(Math.max(0, selIdx - 1)); }
-      else if (e.key === 'Enter' && selIdx >= 0) act((h) => api.open_file(h.file_id));
+      else if (e.key === 'Enter' && selIdx >= 0) openEditor();
     }
   });
   $('obQ').focus();

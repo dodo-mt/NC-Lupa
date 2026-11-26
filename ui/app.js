@@ -658,6 +658,7 @@ function onFileContext(e) {
   if (!f) return;
   selectFile(id);
   const items = [{ title: f.name }, ['Otvoriť', () => openFile(f.id)]];
+  if (f.ftype === 'NC') items.push(['Otvoriť v NC Editore', async () => { const r = await api.open_in_editor(f.id); if (r && r.ok === false) toast(r.error); else if (r && r.note) toast(r.note); }]);
   if (f.target != null) items.push(['Prejsť na cieľ odkazu', () => gotoLink(f)]);
   items.push(['Ukázať v strome', () => revealFile(f, false)]);
   items.push(['Otvoriť priečinok', () => openFolder(f.id)]);

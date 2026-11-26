@@ -183,6 +183,12 @@ skupiny podľa PRÍPONY (`config.OBSAH_SKUPINY`: Heidenhain `.h`, Sinumerik/Gamm
 okno za behu sa vytvára `hidden=True`, lebo `before_show` prebehne skôr, než sa dá napojiť) a zatvorí sa s hlavným oknom.
 Testy: `.venv\Scripts\python.exe -m pytest tests` (pytest je len vo vývojovom .venv).
 
+**1.6.1**: nález z hľadania v obsahu sa otvorí **v NC Editore na riadku** (`editor.py`: najnovšia lokálna kópia
+`%LOCALAPPDATA%\NC_Nastroje\apps\nc_editor\<verzia>\NCEditor.exe`, argument `cesta:riadok`; riadok len od NC Editora
+2026.11.26-11, staršiemu sa cesta dá bez riadka; bez NC Editora sa súbor otvorí predvoleným programom). Enter / dvojklik
+v okne hľadania a v kontextovom menu NC súborov „Otvoriť v NC Editore“. Skúšanie s vývojovým NC Editorom:
+`LUPA_NC_EDITOR_VERZIA=2026.11.26-11` (nainštalovaný starý exe pošle `cesta:riadok` už bežiacemu vývojovému oknu).
+
 **Ďalšie možné kroky**: STL – v práci ho Windows už ukazuje (doplnok), vlastné netreba.
 **Náhľad STP – odložené** (skúška 21.11.2026 mimo projektu): gmsh/OpenCascade načítal STP a rozmery,
 ale vykreslil len 17/47 vzoriek (zlyháva sieť trojuholníkov hlavne pri dieloch z Crea, pády,
