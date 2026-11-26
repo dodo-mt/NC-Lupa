@@ -119,6 +119,7 @@ button { font-family: inherit; cursor: pointer; }
   color: #9ca3af;
 }
 .topbtn:hover { background: #1f2937; color: #f9fafb; }
+.topbtn.obsahbtn { right: 104px; }   /* hľadanie v obsahu – vľavo od koliesko nastavení */
 .bell.has { color: #f9fafb; }
 .bell[hidden] { display: none; }
 .bell-n {

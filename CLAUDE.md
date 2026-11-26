@@ -132,7 +132,7 @@ prints(path, size, modified, version, views)   -- odtlačky PDF, views = odtlack
 - Hľadanie podľa časti názvu: `LIKE '%…%'` (pri raste zvážiť FTS5).
 - Odhad veľkosti: ~150 000 súborov → desiatky MB.
 
-## Stav projektu (aktuálne 1.5.2)
+## Stav projektu (aktuálne 1.6.0)
 
 Hotové: verzia 1 (nižšie) + náhľady, galéria, NC/TXT náhľad, kontrola úplnosti, exe, ikona skenu
 pri hodinách, stavový riadok, kontextové menu stromu, podobné výkresy, filter zákazníkov v `lupa.ini`,
@@ -172,6 +172,16 @@ Overiť: ciele odkazov .lnk na sieťovom L:\ (lokálne netestovateľné), menu z
 **Podobné výkresy** (bod 5): odtlačky v skeneri + UI hotové (tlačidlo v detaile PDF, výsledok
 v zozname/galérii so stĺpcom Podobnosť, Esc = späť; `Api.similar`, index v pamäti do zmeny DB).
 Slabé miesto: náš `drw0001` ↔ výkres zákazníka (iné rozloženie pohľadov) – neskôr kombinácia s STP.
+
+**1.6.0 (26.11.2026)**: **hľadanie v obsahu NC programov** – samostatné okno (`ui/obsah.html`, tlačidlo `</>` vľavo od
+koliesko nastavení, Ctrl+Shift+F, menu stromu „Hľadať v obsahu programov…“ s predvyplneným zákazníkom / zákazkou).
+Hľadá **naživo** na disku (`obsah.py`, 6 vlákien, zastaviteľné), nie cez index (NC súbory = ~34 GB). Výber súborov robí DB:
+skupiny podľa PRÍPONY (`config.OBSAH_SKUPINY`: Heidenhain `.h`, Sinumerik/Gamma `.mpf .spf`, Gamma GMX `.arc`, Fanuc
+`.nd1 .nd2`, Mazak `.eia`, WFL `.wpd`, Edgecam `.nc`), zákazník / zákazka, obdobie zmeny, „len moje“. Pred štartom odhad
+(súbory / MB), nad `OBSAH_POTVRDIT_*` potvrdenie; limity `OBSAH_MAX_MB` (súbory väčšie sa preskočia), `OBSAH_MAX_NALEZOV`,
+`OBSAH_NA_SUBOR`. Režimy text a regulárny výraz. Okno sa otvára v strede hlavného okna (`winstate.show_centered`; druhé
+okno za behu sa vytvára `hidden=True`, lebo `before_show` prebehne skôr, než sa dá napojiť) a zatvorí sa s hlavným oknom.
+Testy: `.venv\Scripts\python.exe -m pytest tests` (pytest je len vo vývojovom .venv).
 
 **Ďalšie možné kroky**: STL – v práci ho Windows už ukazuje (doplnok), vlastné netreba.
 **Náhľad STP – odložené** (skúška 21.11.2026 mimo projektu): gmsh/OpenCascade načítal STP a rozmery,

@@ -568,6 +568,7 @@ function onTreeContext(e) {
     items.push(['Zbaliť', () => collapseCustomer(c.id)]);
     items.push('-');
     items.push(['Otvoriť priečinok', () => openPath(c.path)]);
+    items.push(['Hľadať v obsahu programov…', () => openContentSearch({ customer_id: c.id, job_id: null, label: c.name })]);
   } else if (node) {
     const jobId = Number(node.dataset.job);
     const rel = node.dataset.rel ?? '';
@@ -578,6 +579,7 @@ function onTreeContext(e) {
     items.push(['Zbaliť všetko pod', () => collapseUnder(jobId, rel)]);
     items.push('-');
     items.push(['Otvoriť priečinok', () => openPath(pos ? pos.path : f.job.path)]);
+    items.push(['Hľadať v obsahu programov…', () => openContentSearch({ customer_id: f.cust.id, job_id: f.job.id, label: `${f.cust.name} \\ ${f.job.name}` })]);
   }
   if (items.length) items.push('-');
   items.push(['Zbaliť celý strom', () => {
@@ -2110,6 +2112,22 @@ async function openAbout() {
   $('aboutClose').focus();
 }
 
+// --- hľadanie v obsahu NC programov (samostatné okno) -------------------------------------
+// Výber v strome (zákazník / zákazka) sa predvyplní do poľa „Zákazník / zákazka“.
+function openContentSearch(ctx) {
+  let c = ctx;
+  if (!c && state.sel) {
+    if (state.sel.job) {
+      const f = findJob(state.sel.job);
+      if (f) c = { customer_id: f.cust.id, job_id: f.job.id, label: `${f.cust.name} \\ ${f.job.name}` };
+    } else {
+      const cu = findCust(state.sel.cust);
+      if (cu) c = { customer_id: cu.id, job_id: null, label: cu.name };
+    }
+  }
+  api.open_content_search(c || {});
+}
+
 function closeAbout() {
   $('aboutDlg').hidden = true;
 }
@@ -2117,6 +2135,10 @@ function closeAbout() {
 function bindAbout() {
   $('brand').onclick = openAbout;
   $('settingsBtn').onclick = () => api.open_settings();
+  $('obsahBtn').onclick = () => openContentSearch();
+  document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.shiftKey && (e.key === 'F' || e.key === 'f')) { e.preventDefault(); openContentSearch(); }
+  });
   $('aboutClose').onclick = closeAbout;
   $('aboutCopy').onclick = async () => {
     const r = await api.copy_text(aboutText);

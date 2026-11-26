@@ -19,6 +19,7 @@ import webview
 import config
 import db
 import dbcopy
+import obsah
 import thumbs
 import winstate
 
@@ -348,6 +349,37 @@ class Api:
             h["changed"] = changed.get(h["job_id"])
         order = lambda h: -(h["changed"] or 0)
         return {"to": sorted(to.values(), key=order), "from": sorted(frm.values(), key=order)}
+
+    def open_content_search(self, ctx: dict | None = None) -> dict:
+        """Tlačidlo / Ctrl+Shift+F / menu stromu: okno Hľadať v obsahu programov (ak je otvorené, len ho ukáže
+        a nastaví výber). ctx = {customer_id, job_id, text} z výberu v strome."""
+        win = getattr(self, "_obsah_win", None)
+        if win is not None:
+            try:
+                win.restore()
+                win.show()
+                oapi = getattr(win, "_obsah_api", None)
+                if oapi is not None and ctx:
+                    oapi.set_context(ctx)
+                    win.evaluate_js("aplikujKontext && aplikujKontext()")
+                return {"ok": True}
+            except Exception:
+                self._obsah_win = None
+        win = create_obsah_window(self, ctx or {})
+        self._obsah_win = win
+        win.events.closed += lambda: setattr(self, "_obsah_win", None)
+        return {"ok": True}
+
+    def _zavri_dcerske_okna(self):
+        """Hlavné okno sa zavrelo: ostatné okná Lupy (hľadanie v obsahu, nastavenia) sa zavrú s ním."""
+        for nazov in ("_obsah_win", "_settings_win"):
+            win = getattr(self, nazov, None)
+            if win is not None:
+                try:
+                    win.destroy()
+                except Exception:
+                    pass
+                setattr(self, nazov, None)
 
     def open_settings(self) -> dict:
         """Koliesko: okno Nastavenia (druhé okno; ak je otvorené, len ho ukáže)."""
@@ -679,6 +711,160 @@ class Api:
 WEB_STORAGE = config.LOCAL_DIR / "webview"
 
 
+def _obsah_vyber(p: dict) -> tuple[str, list]:
+    """FROM + WHERE pre hľadanie v obsahu: skupiny (prípony), zákazník / zákazka, obdobie, vlastník.
+    Veľkostný limit sa pridáva zvlášť (preskočené súbory sa len počítajú)."""
+    zname = {k: ex for k, _, ex in config.OBSAH_SKUPINY}
+    exts = sorted({e for k in (p.get("groups") or []) for e in zname.get(k, [])})
+    where, args = [f"f.ext IN ({','.join('?' * len(exts))})" if exts else "0"], list(exts)
+    if p.get("job_id"):
+        where.append("f.job_id = ?")
+        args.append(int(p["job_id"]))
+    elif p.get("customer_id"):
+        where.append("f.customer_id = ?")
+        args.append(int(p["customer_id"]))
+    elif (p.get("scope_text") or "").strip():
+        for slovo in p["scope_text"].split():
+            where.append("(c.name LIKE ? ESCAPE '!' OR j.name LIKE ? ESCAPE '!')")
+            args += [f"%{_like_escape(slovo)}%"] * 2
+    try:
+        dni = float(p.get("days") or 0)
+    except (TypeError, ValueError):
+        dni = 0
+    if dni > 0:
+        where.append("f.modified >= ?")
+        args.append(time.time() - dni * 86400)
+    if p.get("owner"):
+        where.append("f.owner = ?")
+        args.append(p["owner"])
+    base = (" FROM files f JOIN positions p ON p.id = f.position_id JOIN jobs j ON j.id = f.job_id"
+            " JOIN customers c ON c.id = f.customer_id WHERE " + " AND ".join(where))
+    return base, args
+
+
+class ObsahApi:
+    """API okna „Hľadať v obsahu programov“ (ui/obsah.html). Dáta berie z hlavného Api (lokálna kópia DB)."""
+
+    def __init__(self, main: "Api", ctx: dict):
+        self._main, self._ctx = main, ctx or {}
+        self._run = None
+        self._window = None
+
+    def get_init(self) -> dict:
+        return {"groups": [{"key": k, "label": lab, "exts": ex} for k, lab, ex in config.OBSAH_SKUPINY],
+                "ctx": self._ctx, "max_mb": config.OBSAH_MAX_MB, "max_hits": config.OBSAH_MAX_NALEZOV,
+                "per_file": config.OBSAH_NA_SUBOR, "confirm_mb": config.OBSAH_POTVRDIT_MB,
+                "confirm_files": config.OBSAH_POTVRDIT_SUBOROV,
+                "owner": (self._main.whoami() or {}).get("owner", "")}
+
+    def set_context(self, ctx: dict) -> dict:
+        """Hlavné okno poslalo nový výber (okno hľadania je už otvorené)."""
+        self._ctx = ctx or {}
+        return self._ctx
+
+    def suggest(self, q: str) -> list[dict]:
+        """Návrhy pod poľom Zákazník / zákazka: zákazníci a zákazky podľa časti názvu."""
+        q = (q or "").strip()
+        if len(q) < 2:
+            return []
+        like = f"%{_like_escape(q)}%"
+        out = [{"label": r["name"], "customer_id": r["id"], "job_id": None, "kind": "zákazník"} for r in
+               self._main._q("SELECT id, name FROM customers WHERE name LIKE ? ESCAPE '!' ORDER BY name LIMIT 6",
+                             (like,))]
+        out += [{"label": f'{r["customer"]} \\ {r["name"]}', "customer_id": r["customer_id"], "job_id": r["id"],
+                 "kind": "zákazka"} for r in self._main._q(
+            "SELECT j.id, j.name, j.customer_id, c.name AS customer FROM jobs j JOIN customers c ON c.id = j.customer_id"
+            " WHERE j.name LIKE ? ESCAPE '!' ORDER BY j.last_change DESC LIMIT 8", (like,))]
+        return out
+
+    def estimate(self, params: dict) -> dict:
+        """Koľko súborov a MB sa bude čítať (a koľko sa preskočí pre veľkosť) – pred štartom."""
+        base, args = _obsah_vyber(params or {})
+        lim = config.OBSAH_MAX_MB * 1048576
+        r = self._main._q("SELECT COUNT(*) AS n, COALESCE(SUM(f.size), 0) AS b" + base + " AND f.size <= ?",
+                          args + [lim])
+        big = self._main._q("SELECT COUNT(*) AS n" + base + " AND f.size > ?", args + [lim])
+        n, b = (r[0]["n"], r[0]["b"]) if r else (0, 0)
+        mb = round(b / 1048576, 1)
+        return {"files": n, "mb": mb, "skipped": big[0]["n"] if big else 0,
+                "confirm": mb > config.OBSAH_POTVRDIT_MB or n > config.OBSAH_POTVRDIT_SUBOROV}
+
+    def start(self, params: dict) -> dict:
+        p = params or {}
+        text = (p.get("q") or "").strip()
+        if not text:
+            return {"ok": False, "error": "Zadaj hľadaný text."}
+        try:
+            rx = obsah.preloz_dopyt(text, bool(p.get("regex")), bool(p.get("case")))
+        except ValueError as e:
+            return {"ok": False, "error": str(e)}
+        base, args = _obsah_vyber(p)
+        subory = self._main._q(
+            "SELECT f.id, f.name, f.path, f.size, f.job_id, j.name AS job, c.name AS customer, p.rel_path AS folder"
+            + base + " AND f.size <= ? ORDER BY f.modified DESC", args + [config.OBSAH_MAX_MB * 1048576])
+        if self._run is not None:
+            self._run.stop()
+        self._run = obsah.Hladanie(subory, rx, max_nalezov=config.OBSAH_MAX_NALEZOV, na_subor=config.OBSAH_NA_SUBOR,
+                                   vlakna=config.OBSAH_VLAKNA)
+        self._run.start()
+        return {"ok": True, "total": len(subory)}
+
+    def poll(self, since: int = 0) -> dict:
+        if self._run is None:
+            return {"hits": [], "next": 0, "done": True, "total": 0, "scanned": 0, "errors": 0, "stopped": False,
+                    "limit": False, "files_with_hits": 0, "seconds": 0}
+        return self._run.stav(int(since or 0))
+
+    def stop(self):
+        if self._run is not None:
+            self._run.stop()
+
+    def open_file(self, file_id: int) -> dict:
+        return self._main.open_file(file_id)
+
+    def open_folder(self, file_id: int) -> dict:
+        return self._main.open_folder(file_id=file_id)
+
+    def show_in_tree(self, file_id: int) -> dict:
+        """Ukáže súbor v strome hlavného okna Lupy (a vyvolá ho do popredia)."""
+        r = self._main._q("SELECT f.id, f.job_id, p.rel_path AS folder FROM files f JOIN positions p"
+                          " ON p.id = f.position_id WHERE f.id = ?", (int(file_id),))
+        win = getattr(self._main, "_window", None)
+        if not r or win is None:
+            return {"ok": False, "error": "Súbor sa v Lupe nedá ukázať."}
+        try:
+            win.restore()
+            win.show()
+            win.evaluate_js("revealFile(%s, false)" % json.dumps(
+                {"id": r[0]["id"], "job_id": r[0]["job_id"], "folder": r[0]["folder"], "target": None}))
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        return {"ok": True}
+
+    def copy_text(self, text: str) -> dict:
+        return self._main.copy_text(text)
+
+    def close(self):
+        self.stop()
+        if self._window:
+            self._window.destroy()
+
+
+def create_obsah_window(main: "Api", ctx: dict):
+    """Samostatné okno hľadania v obsahu programov (pamätá si polohu)."""
+    oapi = ObsahApi(main, ctx)
+    win = webview.create_window(
+        f"Lupa {config.VERSION} – Hľadať v obsahu programov", str(UI_DIR / "obsah.html"), js_api=oapi,
+        width=1180, height=760, min_size=(820, 520), background_color="#eef1f5", hidden=True)
+    oapi._window = win
+    win._obsah_api = oapi
+    win.events.closed += oapi.stop
+    parent = getattr(main, "_window", None)
+    winstate.attach(win, "obsah", center_on=parent)
+    winstate.show_centered(win, "obsah", parent)   # poloha: stred hlavného okna Lupy
+    return win
+
+
 def _new_app_version() -> str | None:
     """Verzia Lupy v L:\\_Nastroje\\lupa\\app, ak je iná ako spustená (len pri spustení cez spúšťač –
     beží kópia v %LOCALAPPDATA%, vedľa nej je jej version.txt). Inak None."""
@@ -828,6 +1014,8 @@ def main():
         background_color="#eef1f5",
     )
     winstate.attach(window, "main")
+    api._window = window
+    window.events.closed += api._zavri_dcerske_okna      # zavretie hlavného okna zavrie aj hľadanie v obsahu a nastavenia
     # private_mode=False, aby sa pamätali nastavenia UI (šírky panelov) medzi spusteniami
     webview.start(
         debug="--debug" in sys.argv,

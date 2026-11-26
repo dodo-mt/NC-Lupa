@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<title>Lupa – Hľadať v obsahu programov</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="obsah.css">
+</head>
+<body class="obsah-page">
+<header class="ob-top">
+  <div class="ob-row">
+    <label class="sr-only" for="obQ">Hľadaný text</label>
+    <input id="obQ" type="text" autocomplete="off" spellcheck="false" placeholder="Hľadaný text v NC programoch, napr. TOOL CALL 25 alebo M6" title="Hľadá sa v každom riadku programov (Enter = hľadať)">
+    <button type="button" class="btn primary" id="obGo" title="Spustiť hľadanie (Enter)">Hľadať</button>
+    <button type="button" class="btn" id="obStop" disabled title="Zastaviť hľadanie (Esc počas hľadania)">Zastaviť</button>
+  </div>
+  <div class="ob-row ob-opts">
+    <label title="Text sa hľadá doslovne (predvolené) alebo ako regulárny výraz Pythonu"><input type="radio" name="obMode" value="text" checked> Text</label>
+    <label title="Regulárny výraz, napr. Q201=-1\d alebo TOOL CALL (12|13)"><input type="radio" name="obMode" value="regex"> Regulárny výraz</label>
+    <label title="Rozlišovať veľké a malé písmená"><input type="checkbox" id="obCase"> Rozlišovať veľkosť písmen</label>
+  </div>
+  <div class="ob-row ob-groups" id="obGroups" aria-label="Skupiny programov podľa prípony"></div>
+  <div class="ob-row ob-scope">
+    <div class="ob-sug-wrap">
+      <label for="obScope" class="ob-lbl">Zákazník / zákazka</label>
+      <input id="obScope" type="text" autocomplete="off" spellcheck="false" placeholder="napr. Kuka alebo 21930 (prázdne = všetko)" title="Zúži hľadanie na zákazníka alebo zákazku. Viac slov = všetky musia sedieť v názve zákazníka alebo zákazky.">
+      <div class="ob-sug" id="obSug" hidden></div>
+    </div>
+    <label class="ob-lbl" for="obDays">Zmenené za</label>
+    <select id="obDays" title="Prehľadať len súbory zmenené za zvolené obdobie">
+      <option value="0">všetky obdobia</option>
+      <option value="30">30 dní</option>
+      <option value="90">3 mesiace</option>
+      <option value="365">rok</option>
+      <option value="730">2 roky</option>
+    </select>
+    <label title="Len súbory, ktorých vlastníkom si ty"><input type="checkbox" id="obMine"> Len moje</label>
+  </div>
+  <div class="ob-est" id="obEst"></div>
+</header>
+<div class="ob-prog" id="obProg" hidden>
+  <div class="ob-bar"><div class="ob-fill" id="obFill"></div></div>
+  <div class="ob-prog-t" id="obProgT"></div>
+</div>
+<main class="ob-main">
+  <table class="ob-tbl" id="obTbl">
+    <thead><tr><th>Zákazník</th><th>Zákazka</th><th>Súbor</th><th class="r">Riadok</th><th>Nájdený text</th></tr></thead>
+    <tbody id="obRows"></tbody>
+  </table>
+  <div class="ob-empty" id="obEmpty">Zadaj text a stlač Enter. Prehľadáva sa naživo na disku, preto ju zúž zákazníkom alebo skupinou programov.</div>
+</main>
+<footer class="ob-foot">
+  <button type="button" class="btn" id="obOpen" disabled title="Otvoriť vybraný súbor v predvolenom programe (Enter)">Otvoriť súbor</button>
+  <button type="button" class="btn" id="obTree" disabled title="Ukázať súbor v strome Lupy (dvojklik)">Ukázať v strome</button>
+  <button type="button" class="btn" id="obFolder" disabled title="Otvoriť priečinok súboru v Prieskumníkovi">Priečinok</button>
+  <button type="button" class="btn" id="obCopy" disabled title="Skopírovať cestu k súboru">Kopírovať cestu</button>
+  <span class="ob-msg" id="obMsg"></span>
+  <button type="button" class="btn" id="obClose">Zavrieť</button>
+</footer>
+<div class="ob-dlg" id="obDlg" hidden role="dialog" aria-modal="true" aria-labelledby="obDlgT">
+  <div class="ob-dlg-box">
+    <div class="ob-dlg-t" id="obDlgT">Dlhé hľadanie</div>
+    <div class="ob-dlg-m" id="obDlgM"></div>
+    <div class="ob-dlg-b">
+      <button type="button" class="btn" id="obDlgNo">Zrušiť</button>
+      <button type="button" class="btn primary" id="obDlgYes">Hľadať aj tak</button>
+    </div>
+  </div>
+</div>
+<script src="obsah.js"></script>
+</body>
+</html>
