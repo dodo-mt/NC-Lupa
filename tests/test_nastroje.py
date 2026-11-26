@@ -347,3 +347,44 @@ def test_je_kod():
     import kod_nastroja
     assert kod_nastroja.je_kod("73020803") and kod_nastroja.je_kod("6J102553") and kod_nastroja.je_kod("74020202R")
     assert not kod_nastroja.je_kod("2965") and not kod_nastroja.je_kod("FRE-D32-PL-S") and not kod_nastroja.je_kod("")
+
+
+NTX = """O00000001(OD000000 - KANAL 1)
+(Stroj: NTX2000/SZM - Fanuc 31i)
+( POUZITE NARADIE: )
+( N10      T00000000   platkovy vrtak D25 INGERSOLL-5D )
+N10 G0T05125505(G0 T00000000)
+G0T05125505(platkovy vrtak D25 INGERSOLL-5D - NEPOHANANY)
+G1 X1
+G0T40102505(G0 T00000000)
+(G0 T40100405)
+G0T40102505(TK freza D2.5)
+G1 X2
+G0T73030405(neutralny noz 55st na cisto)
+G0T40102505(TK freza D2.5)
+M30
+"""
+
+
+def test_ntx_g0t_kod_s_nazvom_v_zatvorke_bez_predvolieb():
+    v = nastroje.parsuj(NTX)
+    n = podla_kluca(v)
+    assert v["typ"] == "fanuc"
+    assert [x["t"] for x in v["nastroje"]] == ["05125505", "40102505", "73030405"]        # predvoľby `(G0 T…)` sa nepočítajú
+    assert n["05125505"]["prvy"] == 6 and n["05125505"]["pocet"] == 1                     # prvý riadok = skutočná výmena, nie predvoľba
+    assert n["05125505"]["nazov"] == "platkovy vrtak D25 INGERSOLL-5D - NEPOHANANY"
+    assert n["40102505"]["pocet"] == 2 and n["40102505"]["prvy"] == 10 and n["40102505"]["cislo"] == "40102505"
+    assert n["73030405"]["r"] == "0.4"                                                    # polomer z kódu
+
+
+def test_priemer_z_kodu_ma_prednost_pred_nazvom():
+    n = podla_kluca(nastroje.parsuj(NTX))
+    assert n["05125505"]["d"] == "25.5"       # odladený program: kód má prednosť pred poznámkou z CAMu (D25)
+    assert n["40102505"]["d"] == "25"         # známa nejednoznačnosť: Ø2,5 mm frézy sa v kóde zapíše ako 025
+    assert n["73030405"]["d"] == ""           # nôž nemá priemer ani v kóde, ani v názve
+    n = podla_kluca(nastroje.parsuj("G0T73030405(noz D10 na cisto)\nG0T73030405(noz D10 na cisto)\n"))
+    assert n["73030405"]["d"] == "10"          # kód priemer nenesie (nôž) – záloha z názvu
+
+
+def test_ntx_nezachyti_ine_riadky():
+    assert nastroje.parsuj("G0 X1\nG1 Z2\n(G0 T00000000)\nG0T05125505(G0 T00000000)\n")["nastroje"] == []

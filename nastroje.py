@@ -15,6 +15,8 @@ volaní nástroja rovnaké komentáre pre Heidenhain aj Siemens:
               `N10 TLCH1("01103103",-90,0,1) ; HSS navrtavak A3.15` – číslo = osemmiestny kód v úvodzovkách, názov z komentára
               za volaním, inak zo zoznamu v hlavičke `;  N10    - 01103103 - HSS navrtavak A3.15`. M6 sa nehľadá.
   Sústruhy GMX / Gamma (Siemens): `;T00-neutralny noz 55st` tesne nad `T="73030402"` a výmena `TC(2,0,0,2,135,0)` namiesto M6.
+  NTX (Fanuc 31i, `.nd1` / `.nd2`): `G0T05125505(platkovy vrtak D25 INGERSOLL-5D - NEPOHANANY)` – kód a názov v zátvorke, bez M6;
+              predvoľba `G0T02105505(G0 T00000000)` sa nepočíta.
   Mazak `.EIA`: názvy zo zoznamu v hlavičke `( N10 | T73020801 | názov )` / `(  N10    - 01103104 - názov )`.
 Osemmiestny kód nástroja (Siemens `T="73030402"`, Fanuc/Mazak `T73020801`) sa dekóduje (kod_nastroja.py): chýbajúci priemer / polomer
 sa doplní z kódu, chýbajúci názov nahradí názov typu nástroja.
@@ -52,6 +54,11 @@ _S_POPIS = re.compile(r"^\s*;\s*T\d+\s*-\s*(\S.*?)\s*$")                        
 _EIA_ZOZNAM = re.compile(                                                                # `( N10 | T73020801 | názov )(45STUP)`
     r"^\s*\(\s*N\d+\s+[|-]\s*T?([0-9A-Z]{8})\s*[|-]\s*(\S.*?)\s*\)\s*(?:\([^)]*\)\s*)?$")
 POPIS_DOHLAD = 2         # `;Tnn-názov` platí pre volanie najviac o toľko riadkov nižšie
+# NTX (Fanuc 31i, kanály .nd1 / .nd2): výmena `G0T05125505(platkovy vrtak D25 INGERSOLL-5D - NEPOHANANY)` – kód a názov v zátvorke,
+# bez M6; predvoľba ďalšieho nástroja má v zátvorke `G0 T00000000` (alebo len `T000`) – tá sa nepočíta.
+_NTX_VOLANIE = re.compile(r"^\s*(?:N\d+\s*)?(?:G\d{1,2}\s*)?T(\d{8})\s*\(([^)]*)\)")
+_NTX_PREDVOLBA = re.compile(r"^\s*(?:G\d+\s*)?T\d+\s*$", re.IGNORECASE)
+_D_V_NAZVE = re.compile(r"(?<![A-Za-z0-9])D\s*(\d+(?:[.,]\d+)?)(?![0-9])")             # `TK freza D2.5`, `platkovy vrtak D25 …`
 
 
 def _cislo(x: str) -> str:
@@ -83,6 +90,8 @@ def rozpoznaj(text: str) -> str:
         return "sinumerik"
     if re.search(r"(?m)^[^;(\n]*(?<![A-Za-z0-9_$])T\d{1,8}(?![0-9A-Za-z_])[^;\n]*M0?6", text):
         return "fanuc"
+    if any((m := _NTX_VOLANIE.match(r)) and not _NTX_PREDVOLBA.match(m.group(2)) for r in text.splitlines()):
+        return "fanuc"                                                      # NTX: G0T05125505(názov)
     return ""
 
 
@@ -206,6 +215,9 @@ def _fanuc(riadky: list[str]) -> list[dict]:
     for i, r in enumerate(riadky, 1):
         bez = re.sub(r"\([^)]*\)", " ", _RETAZCE.sub('""', r)).split(";", 1)[0]
         if not _M6.search(bez):
+            mn = _NTX_VOLANIE.match(r)
+            if mn and not _NTX_PREDVOLBA.match(mn.group(2)):               # NTX: skutočná výmena (nie predvoľba)
+                _pridaj(zoznam, mn.group(1), i, mn.group(2).strip())
             continue
         m = _FANUC_T.search(bez)
         if m:
@@ -223,8 +235,11 @@ def _z_kodu(zoznam: list[dict]) -> None:
         k = kod_nastroja.dekoduj(z["cislo"] or z["t"])
         if not k:
             continue
-        for kl in ("d", "r"):
-            z[kl] = z[kl] or k[kl]
+        # priemer z kódu má prednosť (program je odladený – poznámka z CAMu sa môže líšiť); priemer z názvu (`D2.5`) len ako záloha,
+        # keď kód priemer nenesie (nože). Pozor: v kóde frézy sa desatiny nepoužívajú (2,5 mm sa zapíše ako 025 = 25 mm).
+        md = _D_V_NAZVE.search(z["nazov"])
+        z["d"] = z["d"] or k["d"] or (_cislo(md.group(1).replace(",", ".")) if md else "")
+        z["r"] = z["r"] or k["r"]
         if not z["nazov"] or z["nazov"] == (z["cislo"] or z["t"]):      # Siemens `T="73030402"` bez komentára: názov = kód
             z["nazov"] = k["typ"]
 
