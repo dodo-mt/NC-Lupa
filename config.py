@@ -12,7 +12,7 @@ import listy
 import odladene
 
 # Verzia aplikĂˇcie â€“ zvyĹˇovaĹĄ pri kaĹľdom vydanĂ­ (zobrazuje sa v UI, ikone skenu, logu a vo vlastnostiach exe)
-VERSION = "1.14.0"
+VERSION = "1.15.1"
 
 # PrieÄŤinok programu (pri PyInstaller exe = prieÄŤinok s exe). Lupa beĹľĂ­ z lokĂˇlnej kĂłpie
 # v %LOCALAPPDATA% (launcher.py) â€“ spĂşĹˇĹĄaÄŤ jej v LUPA_HOME odovzdĂˇ svoj prieÄŤinok (L:\_Nastroje\lupa),

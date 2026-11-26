@@ -424,6 +424,8 @@ select {
 .odl-head:hover { background: #bbf7d0; }
 .odl-head.on { background: #15803d; color: #fff; }
 .odl-head.none, .odl-head.none:hover { background: #f3f4f6; color: var(--muted); cursor: default; }
+.bez-badge { border-color: #92400e; background: #fef3c7; color: #78350f; margin-left: 6px; }
+.bez-badge:hover { background: #fde68a; }
 .odl-badge { border-color: #14532d; background: #dcfce7; color: #14532d; }
 .odl-badge:hover { background: #bbf7d0; }
 .tag-odl { display: inline-block; margin-left: 8px; padding: 0 6px; border-radius: 999px; background: #dcfce7; color: #14532d;
@@ -719,6 +721,10 @@ table.files { width: 100%; min-width: 1000px; border-collapse: collapse; table-l
 .c-name { width: auto; }
 .c-folder { width: 200px; }
 .c-owner { width: 100px; }
+.c-odl { width: 96px; }
+td.c-odl { white-space: nowrap; }
+td.c-odl .tag-odl { margin-left: 0; }
+td.c-odl .odl-no { color: var(--muted); font-size: 12px; }
 .c-date { width: 98px; }
 .c-size { width: 70px; text-align: right; }
 /* odkaz .lnk: cieľ za názvom */

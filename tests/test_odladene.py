@@ -111,7 +111,9 @@ class Falosne2:
 def test_zakazky_s_odladenymi_programami(tmp_path):
     import app
     api = Falosne2(_db_s_odladenymi(tmp_path))
-    assert app.Api._odladene_jobs(api) == {1: 1}                  # prázdny / bez NC priečinok odladene nestačí
+    odl = app.Api._odladene_jobs(api)
+    assert set(odl) == {1} and odl[1][0] == 1                     # prázdny / bez NC priečinok odladene nestačí
+    assert odl[1][1] == 1                                         # čas zmeny najnovšieho odladeného programu
 
 
 def test_rychly_nahlad_textu(tmp_path):

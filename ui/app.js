@@ -29,6 +29,7 @@ const state = {
   mode: 'list',        // 'list' | 'gallery'
   lists: false,        // len CNC listy (config.list_sql)
   odladene: false,     // len odladené programy (priečinok odlad*, odladene.py)
+  bezOdl: null,        // strom len so zákazkami BEZ odladeného programu: null = vypnuté, inak počet mesiacov (0 = všetky)
   similar: null,       // podobné výkresy: {id, name} hľadaného PDF, inak null
   sortBeforeSim: null, // triedenie pred podobnými výkresmi (obnoví sa po zavretí)
 };
@@ -196,19 +197,49 @@ function isSelCust(custId) {
   return state.scope === 'job' && state.sel && !state.sel.job && state.sel.cust === custId;
 }
 
+// zákazky zákazníka podľa filtra „bez odladeného programu“ (len zobrazenie stromu): majú NC programy, ale žiadny odladený,
+// a (pri zvolenom období) sa v nich menilo za posledných N mesiacov
+function treeJobs(c) {
+  if (state.bezOdl === null) return c.jobs;
+  const od = state.bezOdl ? Date.now() / 1000 - state.bezOdl * 30.44 * 86400 : 0;
+  return c.jobs.filter((j) => j.has_nc && !j.odl && (j.changed || 0) >= od);
+}
+
+function renderBezOdlBadge() {
+  const b = $('bezOdlBadge');
+  b.hidden = state.bezOdl === null;
+  if (state.bezOdl === null) return;
+  b.firstElementChild.textContent = `Bez odladeného · ${state.bezOdl ? `${state.bezOdl} mes.` : 'všetky'}`;
+  const n = state.tree.reduce((s, c) => s + treeJobs(c).length, 0);
+  b.title = `Strom ukazuje len zákazky s NC programami, ktoré nemajú odladený program (${n}). Klik = vypnúť.`;
+}
+
+function setBezOdl(mesiace) {
+  state.bezOdl = mesiace;
+  renderBezOdlBadge();
+  renderTree();
+  if (mesiace !== null) {
+    const zakaznici = state.tree.filter((c) => treeJobs(c).length).length;
+    const zakazky = state.tree.reduce((s, c) => s + treeJobs(c).length, 0);
+    toast(`Zákazky bez odladeného programu: ${zakazky} u ${zakaznici} zákazníkov. Strom rozbalíš tlačidlom „Rozbaliť všetkých zákazníkov“.`);
+  }
+}
+
 function renderTree() {
   const out = [];
   for (const c of state.tree) {
+    const jobs = treeJobs(c);
+    if (state.bezOdl !== null && !jobs.length) continue;
     const open = state.openCust.has(c.id);
     // zákazník so zákazkami v jednej skupine – otvorený zákazník sa pri rolovaní drží hore (sticky)
     out.push('<div class="cgroup">');
     out.push(`<div class="node cust${open ? ' open' : ''}${isSelCust(c.id) ? ' sel' : ''}" data-cust="${c.id}" style="padding-left:6px">
-      <span class="tw">${ICON_CHEVRON}</span><span class="lbl">${esc(c.name)}</span><span class="num">${c.jobs.length}</span></div>`);
+      <span class="tw">${ICON_CHEVRON}</span><span class="lbl">${esc(c.name)}</span><span class="num">${jobs.length}</span></div>`);
     if (open) {
-      for (const j of c.jobs) {
+      for (const j of jobs) {
         const jOpen = state.openJobs.has(j.id);
         out.push(`<div class="node job${jOpen ? ' open' : ''}${isSelNode(j.id, '') ? ' sel' : ''}" data-job="${j.id}" style="padding-left:22px">
-          <span class="tw">${j.subdirs ? ICON_CHEVRON : ''}</span><span class="lbl">${esc(j.name)}</span>${j.linked ? `<span class="lk" title="Odkazy .lnk na iné zákazky alebo z iných zákaziek">${ICON_LINK}</span>` : ''}${j.odl ? `<span class="lk odl" title="Zákazka obsahuje ${j.odl} ${j.odl === 1 ? 'odladený NC program' : j.odl >= 2 && j.odl <= 4 ? 'odladené NC programy' : 'odladených NC programov'} (priečinok odladené alebo Zo stroja). Klik = vybrať zákazku a ukázať len odladené programy.">${ICON_ODL}</span>` : ''}${complStatus(j.missing)}</div>`);
+          <span class="tw">${j.subdirs ? ICON_CHEVRON : ''}</span><span class="lbl">${esc(j.name)}</span>${j.linked ? `<span class="lk" title="Odkazy .lnk na iné zákazky alebo z iných zákaziek">${ICON_LINK}</span>` : ''}${j.odl ? `<span class="lk odl" title="Zákazka obsahuje ${j.odl} ${j.odl === 1 ? 'odladený NC program' : j.odl >= 2 && j.odl <= 4 ? 'odladené NC programy' : 'odladených NC programov'} (priečinok odladené alebo Zo stroja). Posledný odladený: ${fmtDay(j.odl_cas)}. Klik = vybrať zákazku a ukázať len odladené programy.">${ICON_ODL}</span>` : ''}${complStatus(j.missing)}</div>`);
         if (jOpen && state.positions[j.id]) renderDirs(out, j.id, buildDirTree(state.positions[j.id]), 2);
       }
     }
@@ -807,10 +838,10 @@ function linkItem(h, i, dir) {
   const yr = h.changed ? new Date(h.changed * 1000).getFullYear() : '';
   const cust = f.cust.name.split('-')[0];
   const where = dir === 'to' ? h.target : `${f.cust.name} \\ ${f.job.name}${h.rel ? ' \\ ' + h.rel : ''}`;
-  const tip = `${where}\n${linkCount(h.links)} – klik = ${dir === 'to' ? 'ukázať cieľ' : 'ukázať odkaz'} v strome`;
+  const tip = `${where}\n${linkCount(h.links)}${h.changed ? `\nPosledná zmena v zákazke: ${fmtDay(h.changed)}` : ''}\nKlik = ${dir === 'to' ? 'ukázať cieľ' : 'ukázať odkaz'} v strome`;
   return `<button type="button" class="bl-item" data-dir="${dir}" data-i="${i}" title="${esc(tip)}">` +
     `<span class="mono">${esc(f.job.name)}</span><span class="bl-cust">${esc(cust)}</span>` +
-    `${yr ? `<span class="bl-yr">${yr}</span>` : ''}</button>`;
+    `${yr ? `<span class="bl-yr">z roku ${yr}</span>` : ''}</button>`;
 }
 
 function linkRow(list, dir) {
@@ -924,7 +955,8 @@ function renderOdlHead(f) {
   el.textContent = n ? `✓ Odladené ${n}` : 'Odladené 0';
   el.title = !n ? 'Zákazka nemá žiadny odladený NC program (priečinok odladené alebo Zo stroja)'
     : state.odladene ? 'Zobrazené sú len odladené programy – klik = ukázať všetko'
-      : `Zákazka obsahuje ${n} ${n === 1 ? 'odladený NC program' : n >= 2 && n <= 4 ? 'odladené NC programy' : 'odladených NC programov'}. Klik = ukázať len odladené programy.`;
+      : `Zákazka obsahuje ${n} ${n === 1 ? 'odladený NC program' : n >= 2 && n <= 4 ? 'odladené NC programy' : 'odladených NC programov'}`
+        + (f.job.odl_cas ? ` (posledný odladený: ${fmtDay(f.job.odl_cas)})` : '') + '. Klik = ukázať len odladené programy.';
 }
 
 function renderHead() {
@@ -977,6 +1009,9 @@ function renderHead() {
   document.querySelector('th.c-folder').firstChild.nodeValue = multiJob() ? 'Zákazka / priečinok' : 'Priečinok';
 }
 
+// zoradenie podľa stavu „odladený“: iné než NC (0) < neodladené NC (1) < odladené NC (2)
+const odlRank = (f) => (f.ftype === 'NC' ? (f.odl ? 2 : 1) : 0);
+
 function sortedFiles() {
   const k = state.sortKey;
   const dir = state.sortDir;
@@ -986,6 +1021,7 @@ function sortedFiles() {
     let r;
     if (k === 'ftype') r = typeOrder(a.ftype) - typeOrder(b.ftype);
     else if (k === 'size' || k === 'created' || k === 'modified' || k === 'sim') r = (a[k] || 0) - (b[k] || 0);
+    else if (k === 'odl') r = odlRank(a) - odlRank(b);
     else if (k === 'folder') r = loc(a).localeCompare(loc(b), 'sk', { numeric: true, sensitivity: 'base' });
     else r = String(a[k] || '').localeCompare(String(b[k] || ''), 'sk', { numeric: true, sensitivity: 'base' });
     if (r === 0 && k !== 'name') r = a.name.localeCompare(b.name, 'sk', { numeric: true, sensitivity: 'base' });
@@ -1013,8 +1049,9 @@ function renderFiles() {
     const nameTitle = link ? `${f.name}\nOdkaz na: ${f.target || 'cieľ sa nedá zistiť'}\nDvojklik = prejsť na cieľ` : f.name;
     return `<tr data-id="${f.id}"${f.id === state.selFile ? ' class="sel"' : ''}>
     <td class="c-type">${badge(f.ftype)}</td>
+    <td class="c-odl">${f.ftype === 'NC' ? (f.odl ? '<span class="tag-odl" title="Program je v priečinku odladené / Zo stroja">✓ odladený</span>' : '<span class="odl-no">neodladený</span>') : ''}</td>
     <td class="c-sim">${simCell(f)}</td>
-    <td class="c-name" title="${esc(nameTitle)}">${highlight(f.name)}${f.ftype === 'NC' && f.odl ? '<span class="tag-odl" title="Program je v priečinku odladené">odladený</span>' : ''}${link ? `<span class="lnk-to">→ ${esc(shortPath(f.target) || '?')}</span>` : ''}</td>
+    <td class="c-name" title="${esc(nameTitle)}">${highlight(f.name)}${link ? `<span class="lnk-to">→ ${esc(shortPath(f.target) || '?')}</span>` : ''}</td>
     <td class="c-folder" title="${esc(locTitle)}">${esc(loc)}</td>
     <td class="c-owner">${esc(ownerName(f.owner))}</td>
     <td class="c-date k-created" title="${fmtDate(f.created)}">${fmtDay(f.created)}</td>
@@ -1638,6 +1675,7 @@ function bind() {
     renderListsChip();
     refresh();
   });
+  $('bezOdlBadge').addEventListener('click', () => setBezOdl(null));
   $('odlHead').addEventListener('click', () => {
     if ($('odlHead').disabled) return;
     state.odladene = !state.odladene;
@@ -1814,11 +1852,11 @@ function bindResizers() {
 
 // --- ťahateľné stĺpce tabuľky ---------------------------------------------
 // Názov nemá pevnú šírku – vypĺňa voľné miesto; jeho ťahaním sa mení minimum.
-const COL_DEFAULTS = { ftype: 64, sim: 120, name: 300, folder: 200, owner: 100, created: 98, modified: 98, size: 70 };
+const COL_DEFAULTS = { ftype: 64, odl: 96, sim: 120, name: 300, folder: 200, owner: 100, created: 98, modified: 98, size: 70 };
 const COL_MIN = 40;
 // stĺpce, ktoré sa dajú skryť (pravé tlačidlo na hlavičke): kľúč -> [názov, CSS trieda buniek]
 const COL_HIDEABLE = {
-  ftype: ['Typ', 'c-type'], folder: ['Priečinok', 'c-folder'], owner: ['Vlastník', 'c-owner'],
+  ftype: ['Typ', 'c-type'], odl: ['Odladený', 'c-odl'], folder: ['Priečinok', 'c-folder'], owner: ['Vlastník', 'c-owner'],
   created: ['Vytvorený', 'k-created'], modified: ['Zmenený', 'k-modified'], size: ['Veľkosť', 'c-size'],
 };
 let colW = { ...COL_DEFAULTS };
@@ -2114,6 +2152,12 @@ function openViewsMenu() {
     state.odladene = !state.odladene;
     renderListsChip();
     refresh();
+  } });
+  items.push({ text: 'Zákazky bez odladeného programu…', checked: state.bezOdl !== null, action: () => {
+    if (state.bezOdl !== null) { setBezOdl(null); return; }
+    showMenu(at, [{ title: 'Strom len so zákazkami bez odladeného programu' },
+      ...[[1, 'zmenené za posledný mesiac'], [3, 'za 3 mesiace'], [6, 'za 6 mesiacov'], [12, 'za rok'], [0, 'všetky (aj staré)']]
+        .map(([m, t]) => [t, () => setBezOdl(m)])]);
   } });
   if (state.lists || state.odladene) {
     items.push(['Vypnúť všetky masky', () => {

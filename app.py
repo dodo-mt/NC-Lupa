@@ -215,7 +215,7 @@ class Api:
             if j["id"] in linked:
                 j["linked"] = True
             if j["id"] in odladene:
-                j["odl"] = odladene[j["id"]]
+                j["odl"], j["odl_cas"] = odladene[j["id"]]
             if "NC" in jtypes.get(j["id"], ()):
                 j["has_nc"] = True                       # sivý štítok „Odladené 0“ pri zákazke s NC bez odladeného programu
         for c in customers:
@@ -405,12 +405,13 @@ class Api:
         except OSError as e:
             return {"ok": False, "error": f"Súbor sa nepodarilo uložiť: {e.strerror or e}"}
 
-    def _odladene_jobs(self) -> dict[int, int]:
+    def _odladene_jobs(self) -> dict[int, tuple[int, float | None]]:
         """Zákazky, ktoré majú aspoň jeden NC súbor v priečinku odlad* (odladene.py) -> počet takých programov
-        (značka pri zákazke v strome aj v hlavičke). Jeden dopyt na celú databázu pri načítaní stromu."""
+        a čas zmeny najnovšieho z nich (značka pri zákazke v strome aj v hlavičke). Jeden dopyt na celú databázu
+        pri načítaní stromu."""
         cond, args = config.ODLADENE.sql("p")
-        return {r["job_id"]: r["n"] for r in self._q(
-            "SELECT f.job_id, COUNT(*) AS n FROM files f JOIN positions p ON p.id = f.position_id"
+        return {r["job_id"]: (r["n"], r["cas"]) for r in self._q(
+            "SELECT f.job_id, COUNT(*) AS n, MAX(f.modified) AS cas FROM files f JOIN positions p ON p.id = f.position_id"
             f" WHERE f.ftype = 'NC' AND {cond} GROUP BY f.job_id", args)}
 
     def get_doc_preview(self, file_id: int, page: int = 0, sheet: int = 0) -> dict:

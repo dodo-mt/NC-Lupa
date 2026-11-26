@@ -45,6 +45,10 @@
     <button type="button" class="iconbtn" id="treeCollapse" title="Zbaliť celý strom" aria-label="Zbaliť celý strom">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 20 5-5 5 5"></path><path d="m7 4 5 5 5-5"></path></svg>
     </button>
+    <button type="button" class="lists-badge bez-badge" id="bezOdlBadge" hidden title="Strom ukazuje len zákazky bez odladeného programu. Klik = vypnúť.">
+      <span></span>
+      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+    </button>
   </div>
   <button type="button" class="chip-select views-btn" id="viewsBtn" aria-haspopup="menu" title="Moje filtre – vlastník, typy, hľadanie, rozsah a zobrazenie naraz">
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
@@ -114,6 +118,7 @@
         <thead>
           <tr>
             <th data-sort="ftype" class="c-type">Typ</th>
+            <th data-sort="odl" class="c-odl" title="NC program v priečinku odladené / Zo stroja (zoradiť: odladené a neodladené zvlášť)">Odladený</th>
             <th data-sort="sim" class="c-sim" title="Podobnosť výkresu s hľadaným (tvar pohľadov)">Podobnosť</th>
             <th data-sort="name" class="c-name">Názov</th>
             <th data-sort="folder" class="c-folder">Priečinok</th>

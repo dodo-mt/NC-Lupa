@@ -258,6 +258,15 @@ odladeného (`Api.get_tree`: `has_nc`), bez NC programov sa nezobrazí.
 `zo stroja`, `zo stroja dmc80`, `ZO_STROJA` …). Na ostrej DB: zákaziek s odladeným programom 2852 → 3396, odladených NC súborov
 10 693 → 20 176. Platí všade (filter, štítky, nástrojový list, porovnanie s odladenou verziou). Vlastný vzor v `lupa.ini` ho prepíše.
 
+**1.15.0**: (1) **stĺpec „Odladený“** v zozname súborov (zelené „✓ odladený“ / sivé „neodladený“ pri NC, dá sa zoradiť a skryť; značka pri
+názve zmizla); (2) **filter „Zákazky bez odladeného programu…“** v menu Moje filtre (strom ukáže len zákazky s NC programami bez
+odladeného, voliteľne len zmenené za 1 / 3 / 6 / 12 mesiacov alebo všetky; štítok „Bez odladeného · N mes. ✕“ nad stromom;
+len zobrazenie stromu, neukladá sa; na ostrej DB 28 921 zákaziek, 831 za 3 mesiace); (3) **dátum posledného odladeného programu** v
+tooltipe značky pri zákazke aj v hlavičke (`get_tree`: `odl_cas`).
+
+**1.15.1**: v riadku „Odkazuje na / Odkazujú sem“ je rok pri zákazke popísaný („OD684 **z roku 2018**“ namiesto samotného „2018“);
+tooltip ukáže dátum poslednej zmeny v zákazke.
+
 **Ďalšie možné kroky**: STL – v práci ho Windows už ukazuje (doplnok), vlastné netreba.
 **Náhľad STP – odložené** (skúška 21.11.2026 mimo projektu): gmsh/OpenCascade načítal STP a rozmery,
 ale vykreslil len 17/47 vzoriek (zlyháva sieť trojuholníkov hlavne pri dieloch z Crea, pády,
