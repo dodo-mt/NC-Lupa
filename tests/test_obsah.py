@@ -125,7 +125,7 @@ def api(tmp_path):
     subory = [  # id, pozícia, zákazka, zákazník, názov, prípona, veľkosť, vek v dňoch, vlastník
         (1, 1, 1, 1, "a.h", "h", 1000, 1, "jnovak"), (2, 1, 1, 1, "b.mpf", "mpf", 2000, 1, "jnovak"),
         (3, 2, 2, 2, "c.h", "h", 3000, 500, "pkovac"), (4, 2, 2, 2, "d.eia", "eia", 4000, 1, "pkovac"),
-        (5, 1, 1, 1, "velky.h", "h", 50 * 1048576, 1, "jnovak"), (6, 1, 1, 1, "e.pdf", "pdf", 10, 1, "jnovak"),
+        (5, 1, 1, 1, "velky.h", "h", 80 * 1048576, 1, "jnovak"), (6, 1, 1, 1, "e.pdf", "pdf", 10, 1, "jnovak"),
     ]
     for i, pos, job, cust, name, ext, size, vek, owner in subory:
         con.execute("INSERT INTO files(id, position_id, job_id, customer_id, name, ext, ftype, path, size, modified, owner)"

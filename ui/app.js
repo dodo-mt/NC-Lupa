@@ -1184,6 +1184,34 @@ function selectFile(id, scroll) {
   renderDetail();
 }
 
+// --- nástroje NC programu v detaile (nastroje.py) -------------------------------------------
+// Klik na nástroj otvorí NC Editor na prvom volaní. Rozmery z hlavičky programu: D priemer, r polomer, Lc dĺžka rezu, L dĺžka.
+let toolsTok = 0;
+async function loadTools(f) {
+  const tok = ++toolsTok;
+  let r;
+  try { r = await api.get_tools(f.id); } catch (e) { r = { ok: false, error: String(e) }; }
+  const box = $('dTools');
+  if (tok !== toolsTok || !box || state.selFile !== f.id) return;     // medzitým sa vybral iný súbor
+  const msg = (t) => { box.innerHTML = `<div class="dt-h">Nástroje programu</div><div class="dt-msg">${esc(t)}</div>`; };
+  if (!r.ok) { msg(r.error); return; }
+  if (!r.nastroje.length) { msg('V programe sa nenašli volania nástrojov.'); return; }
+  const maT = r.nastroje.some((n) => n.cislo);                                   // číslo T (Siemens ho nemusí mať)
+  const maRozmery = r.nastroje.some((n) => n.d || n.r || n.r2 || n.lc || n.l || n.ll);
+  const rozmery = (n) => [n.d && `D${n.d}`, n.r && `r${n.r}`, n.r2 && `r2 ${n.r2}`, n.lc && `Lc${n.lc}`, n.l && `L${n.l}`, n.ll && `LL${n.ll}`].filter(Boolean).join(' ');
+  box.innerHTML = `<div class="dt-h">Nástroje programu (${r.nastroje.length})</div>
+    <table class="dt-tbl"><thead><tr>${maT ? '<th>T</th>' : ''}<th>Názov</th>${maRozmery ? '<th>Rozmery</th>' : ''}<th class="r">Volaní</th></tr></thead><tbody>${
+      r.nastroje.map((n, i) => `<tr data-i="${i}" title="Otvoriť v NC Editore na riadku ${n.prvy}">${maT ? `<td class="mono">${esc(n.cislo)}</td>` : ''}<td>${esc(n.nazov || (n.cislo ? '' : n.t))}</td>${maRozmery ? `<td class="mono">${esc(rozmery(n))}</td>` : ''}<td class="r">${n.pocet}</td></tr>`).join('')
+    }</tbody></table>`;
+  box.querySelector('tbody').onclick = async (e) => {
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    const n = r.nastroje[Number(tr.dataset.i)];
+    const res = await api.open_in_editor(f.id, n.prvy);
+    if (res && res.ok === false) toast(res.error);
+  };
+}
+
 // --- detail ----------------------------------------------------------------
 function renderDetail() {
   const f = state.files.find((x) => x.id === state.selFile);
@@ -1220,9 +1248,11 @@ function renderDetail() {
       ${f.ftype === 'PDF' && !f.query ? `<button type="button" class="btn btn-icon" id="btnSimilar" style="flex-basis:100%" title="Nájde výkresy s podobnými pohľadmi v celom ${esc(state.meta.root)}">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1"></rect><rect x="13" y="13" width="8" height="8" rx="1"></rect><path d="M15 3h5a1 1 0 0 1 1 1v5M9 21H4a1 1 0 0 1-1-1v-5"></path></svg>
         Podobné výkresy</button>` : ''}
-    </div>`;
+    </div>
+    ${f.ftype === 'NC' ? '<div class="d-tools" id="dTools"><div class="dt-h">Nástroje programu</div><div class="dt-msg">Načítavam…</div></div>' : ''}`;
   $('btnOpen').onclick = () => openFile(f.id);
   $('preview').ondblclick = () => openFile(f.id);
+  if (f.ftype === 'NC') loadTools(f);
   $('btnFolder').onclick = () => openFolder(f.id);
   if ($('btnGoto')) $('btnGoto').onclick = () => revealFile(f, false);
   if ($('btnLink')) $('btnLink').onclick = () => gotoLink(f);

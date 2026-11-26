@@ -875,6 +875,15 @@ td.c-date, td.c-size { color: var(--muted-2); font-variant-numeric: tabular-nums
 .d-meta { margin: 0; display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 8px 12px; }
 .d-meta dt { color: var(--muted); }
 .d-meta dd { margin: 0; }
+.d-tools { border-top: 1px solid var(--line); padding-top: 12px; }
+.dt-h { font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; color: var(--muted-2); margin-bottom: 6px; }
+.dt-msg { font-size: 12.5px; color: var(--muted); }
+.dt-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.dt-tbl th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 600; padding: 2px 6px 4px 0; }
+.dt-tbl td { padding: 3px 6px 3px 0; border-top: 1px solid var(--line-soft); vertical-align: top; word-break: break-word; }
+.dt-tbl th.r, .dt-tbl td.r { text-align: right; padding-right: 0; }
+.dt-tbl tbody tr { cursor: pointer; }
+.dt-tbl tbody tr:hover { background: var(--accent-soft); }
 .d-btns { display: flex; flex-wrap: wrap; gap: 8px; }
 .btn {
   flex: 1 1 auto;

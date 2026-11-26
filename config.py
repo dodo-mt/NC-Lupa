@@ -11,7 +11,7 @@ from pathlib import Path
 import listy
 
 # Verzia aplikácie – zvyšovať pri každom vydaní (zobrazuje sa v UI, ikone skenu, logu a vo vlastnostiach exe)
-VERSION = "1.6.3"
+VERSION = "1.7.1"
 
 # Priečinok programu (pri PyInstaller exe = priečinok s exe). Lupa beží z lokálnej kópie
 # v %LOCALAPPDATA% (launcher.py) – spúšťač jej v LUPA_HOME odovzdá svoj priečinok (L:\_Nastroje\lupa),
@@ -51,7 +51,7 @@ OBSAH_SKUPINY = [
     ("wfl", "WFL", ["wpd"]),
     ("edgecam", "Edgecam (všeobecné)", ["nc"]),
 ]
-OBSAH_MAX_MB = 20            # väčšie súbory sa neprehľadávajú (hlásia sa ako preskočené)
+OBSAH_MAX_MB = 50            # väčšie súbory sa neprehľadávajú (hlásia sa ako preskočené)
 OBSAH_MAX_NALEZOV = 2000     # koľko nálezov celkom
 OBSAH_NA_SUBOR = 50          # koľko nálezov z jedného súboru
 OBSAH_POTVRDIT_MB = 2048     # nad touto veľkosťou (alebo počtom súborov) sa hľadanie pred štartom potvrdzuje

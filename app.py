@@ -20,6 +20,7 @@ import config
 import db
 import dbcopy
 import editor
+import nastroje
 import obsah
 import thumbs
 import winstate
@@ -687,6 +688,26 @@ class Api:
             return {"ok": True}
         except OSError as e:
             return {"ok": False, "error": str(e)}
+
+    def get_tools(self, file_id: int) -> dict:
+        """Nástroje NC programu pre detail súboru (nastroje.py). Posledný prečítaný súbor je v pamäti, čítanie beží
+        na vlákne volania z UI. Veľké súbory (nad config.OBSAH_MAX_MB) sa nečítajú."""
+        path = self._known_file(file_id)
+        if not path:
+            return {"ok": False, "error": "Súbor nie je v databáze."}
+        try:
+            st = os.stat(path)
+            if st.st_size > config.OBSAH_MAX_MB * 1048576:
+                return {"ok": False, "error": f"Súbor je príliš veľký na čítanie nástrojov (nad {config.OBSAH_MAX_MB} MB)."}
+            key = (path, st.st_mtime_ns, st.st_size)
+            cache = getattr(self, "_tools_cache", None)
+            if cache is None or cache[0] != key:
+                with open(path, "rb") as f:
+                    cache = (key, nastroje.parsuj(obsah.dekoduj(f.read())))
+                self._tools_cache = cache
+        except OSError as e:
+            return {"ok": False, "error": f"Súbor sa nedá prečítať: {e.strerror or e}"}
+        return {"ok": True, **cache[1]}
 
     def open_in_editor(self, file_id: int, line: int | None = None) -> dict:
         """NC program v NC Editore (od verzie 2026.11.26-11 aj na riadku `line`). Bez NC Editora sa súbor otvorí

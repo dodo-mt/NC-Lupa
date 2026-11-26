@@ -198,6 +198,16 @@ v okne hľadania v obsahu Ctrl+klik na dva nálezy + tlačidlo „Porovnať v NC
 `editor.otvor_porovnanie` spustí `NCEditor.exe --porovnaj A B` (od NC Editora 2026.11.26-12; staršiemu sa nič nepošle),
 rôzne prípony = len upozornenie. `Api.compare_in_editor`. Skúšanie: `LUPA_NC_EDITOR_VERZIA=2026.11.26-12` + vývojový NC Editor.
 
+**1.7.0**: **nástroje NC programu v detaile súboru** (`nastroje.py`, `Api.get_tools`, sekcia „Nástroje programu“ pod
+tlačidlami): rozpoznanie podľa obsahu – Heidenhain (`TOOL CALL`, názov z komentára tesne NAD volaním `; (Nastroj: NÁZOV | … | L=… LL=…)` (name končí pri ` | ` alebo ` L=`),
+inak z `;  (NÁZOV)` za volaním, D/r/Lc/L z hlavičkových
+komentárov `; T2965 D50 r2.5 Lc8.7 L40 - NÁZOV`, `TOOL DEF` sa nepočíta; L / LL aj z komentára `Nastroj:`), Sinumerik z hyperMILLu
+(rovnaký komentár `Nastroj:` nad `T="NÁZOV"` + `M6` do 4 riadkov; číslo T a R/R2/LCUT z hlavičky `; T933 NÁZOV | R=2.5 R2=0. LCUT=35`
+alebo z textu operácie `GROUP_BEGIN(0,"1590 : T933 M6 - …")`; texty v úvodzovkách sa pri hľadaní volania ignorujú, inak by
+`MSG ("T933 M6")` dalo falošný nástroj), Fanuc/Mazak (`T73020801 … M6`, bez výkladu čísla). Tabuľka T / názov / rozmery / počet
+volaní, klik = NC Editor na prvom volaní. Súbory nad `OBSAH_MAX_MB` (**50 MB**, od 1.7.1; platí aj pre hľadanie v obsahu) sa
+nečítajú. Vzory: anonymizované programy v NC Editore (`tests/data`, `vzorky`). NTX (`fanuc_ntx.nc`) zatiaľ nič nenájde.
+
 **Ďalšie možné kroky**: STL – v práci ho Windows už ukazuje (doplnok), vlastné netreba.
 **Náhľad STP – odložené** (skúška 21.11.2026 mimo projektu): gmsh/OpenCascade načítal STP a rozmery,
 ale vykreslil len 17/47 vzoriek (zlyháva sieť trojuholníkov hlavne pri dieloch z Crea, pády,
