@@ -10,6 +10,7 @@ import subprocess
 from pathlib import Path
 
 MIN_VERZIA_RIADOK = "2026.11.26-11"
+MIN_VERZIA_POROVNANIE = "2026.11.26-12"
 EXE = "NCEditor.exe"
 
 
@@ -40,6 +41,10 @@ def pozna_riadok(verzia: str) -> bool:
     return _kluc(verzia) >= _kluc(MIN_VERZIA_RIADOK)
 
 
+def pozna_porovnanie(verzia: str) -> bool:
+    return _kluc(verzia) >= _kluc(MIN_VERZIA_POROVNANIE)
+
+
 def argument(path: str, riadok: int | None, verzia: str) -> str:
     """Cesta pre NC Editor – s `:riadok`, ak ho daná verzia vie."""
     return f"{path}:{int(riadok)}" if riadok and int(riadok) > 0 and pozna_riadok(verzia) else path
@@ -57,3 +62,23 @@ def otvor(path: str, riadok: int | None = None, koren: Path | None = None) -> di
     except OSError as e:
         return {"ok": False, "error": f"NC Editor sa nepodarilo spustiť: {e.strerror or e}"}
     return {"ok": True, "line": bool(riadok) and pozna_riadok(verzia), "version": verzia}
+
+
+def otvor_porovnanie(a: str, b: str, riadok_a: int | None = None, riadok_b: int | None = None,
+                     koren: Path | None = None) -> dict:
+    """NC Editor: otvorí oba programy a porovná ich (A vľavo, B vpravo). Starší NC Editor porovnanie z príkazového
+    riadka nepozná – vtedy sa nič nespustí (inak by ho zamenil za cestu k súboru)."""
+    n = najdi_editor(koren)
+    if n is None:
+        return {"ok": False, "error": "NC Editor nie je nainštalovaný (spusti NC Nástroje, stiahne sa sám)."}
+    exe, verzia = n
+    verzia = os.environ.get("LUPA_NC_EDITOR_VERZIA") or verzia
+    if not pozna_porovnanie(verzia):
+        return {"ok": False, "error": "Tento NC Editor ešte nevie porovnanie z Lupy – aktualizuj ho (otvor NC Nástroje, "
+                                      "NC Editor zavri a otvor znova)."}
+    try:
+        subprocess.Popen([str(exe), "--porovnaj", argument(a, riadok_a, verzia), argument(b, riadok_b, verzia)],
+                         cwd=str(exe.parent))
+    except OSError as e:
+        return {"ok": False, "error": f"NC Editor sa nepodarilo spustiť: {e.strerror or e}"}
+    return {"ok": True, "version": verzia}

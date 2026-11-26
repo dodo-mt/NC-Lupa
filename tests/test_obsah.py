@@ -107,6 +107,10 @@ class FalosneHlavne:
     def whoami(self):
         return {"owner": "jnovak"}
 
+    def _known_file(self, file_id):
+        rows = self._q("SELECT path FROM files WHERE id = ?", (file_id,))
+        return rows[0]["path"] if rows else None
+
 
 @pytest.fixture
 def api(tmp_path):
@@ -173,3 +177,25 @@ def test_navrhy_zakaznika_a_zakazky(api):
     z = api.suggest("21930")
     assert z[0]["kind"] == "zákazka" and z[0]["job_id"] == 1 and "\\" in z[0]["label"]
     assert api.suggest("k") == []
+
+
+# ---------- kontext nálezu ----------
+def test_kontext_okolo_riadka():
+    text = "\n".join(f"N{i}" for i in range(1, 21))
+    k = obsah.kontext(text, 10, 3)
+    assert [n for n, _ in k["lines"]] == [7, 8, 9, 10, 11, 12, 13] and k["first"] == 7 and k["total"] == 20
+    assert [n for n, _ in obsah.kontext(text, 1, 5)["lines"]] == [1, 2, 3, 4, 5, 6]          # začiatok súboru
+    assert [n for n, _ in obsah.kontext(text, 20, 5)["lines"]][-1] == 20                       # koniec súboru
+    assert obsah.kontext(text, 99, 5)["lines"] == [] and obsah.kontext(text, 0, 5)["lines"] == []
+    assert len(obsah.kontext("x" * 1000, 1)["lines"][0][1]) == 400
+
+
+def test_api_context_cita_subor_a_chyby(api, tmp_path):
+    (tmp_path / "a.h").write_text("\n".join(f"L{i}" for i in range(1, 31)), encoding="utf-8")
+    r = api.context(1, 15, 2)
+    assert r["ok"] and [n for n, _ in r["lines"]] == [13, 14, 15, 16, 17] and tuple(r["lines"][2]) == (15, "L15")
+    (tmp_path / "a.h").write_text("L1\nL2\n", encoding="utf-8")                                 # súbor sa zmenil
+    assert api.context(1, 15, 2)["lines"] == []
+    (tmp_path / "a.h").unlink()
+    assert api.context(1, 1)["ok"] is False
+    assert api.context(9999, 1)["ok"] is False

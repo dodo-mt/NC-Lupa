@@ -189,6 +189,15 @@ Testy: `.venv\Scripts\python.exe -m pytest tests` (pytest je len vo vývojovom .
 v okne hľadania a v kontextovom menu NC súborov „Otvoriť v NC Editore“. Skúšanie s vývojovým NC Editorom:
 `LUPA_NC_EDITOR_VERZIA=2026.11.26-11` (nainštalovaný starý exe pošle `cesta:riadok` už bežiacemu vývojovému oknu).
 
+**1.6.2**: **kontext nálezu** – pod zoznamom nálezov panel s ±5 riadkami okolo vybraného nálezu (`ObsahApi.context`,
+`obsah.kontext`; posledný prečítaný súbor v pamäti, nálezy v ňom sú hneď; zvýraznený nález a ostatné zhody).
+
+**1.6.3**: **porovnanie dvoch NC programov v NC Editore** – Ctrl+klik označí súbor (A, potom B; tretí nahradí najstarší,
+fialový pásik a písmeno), pravé tlačidlo na NC súbore → „Porovnať označené“ / „Porovnať s označeným“ (zoznam aj galéria);
+v okne hľadania v obsahu Ctrl+klik na dva nálezy + tlačidlo „Porovnať v NC Editore“ (kurzor sa nastaví na nájdené riadky).
+`editor.otvor_porovnanie` spustí `NCEditor.exe --porovnaj A B` (od NC Editora 2026.11.26-12; staršiemu sa nič nepošle),
+rôzne prípony = len upozornenie. `Api.compare_in_editor`. Skúšanie: `LUPA_NC_EDITOR_VERZIA=2026.11.26-12` + vývojový NC Editor.
+
 **Ďalšie možné kroky**: STL – v práci ho Windows už ukazuje (doplnok), vlastné netreba.
 **Náhľad STP – odložené** (skúška 21.11.2026 mimo projektu): gmsh/OpenCascade načítal STP a rozmery,
 ale vykreslil len 17/47 vzoriek (zlyháva sieť trojuholníkov hlavne pri dieloch z Crea, pády,

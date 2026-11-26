@@ -41,3 +41,40 @@ def test_otvor_spusti_exe_s_argumentom(tmp_path, monkeypatch):
     r = editor.otvor(r"L:\x\p.h", 1250, tmp_path)
     assert r == {"ok": True, "line": True, "version": "2026.11.26-11"}
     assert volane[0][0][1] == r"L:\x\p.h:1250"
+
+
+def test_porovnanie_len_pre_novsiu_verziu(tmp_path, monkeypatch):
+    monkeypatch.delenv("LUPA_NC_EDITOR_VERZIA", raising=False)
+    volane = []
+    monkeypatch.setattr(editor.subprocess, "Popen", lambda args, cwd=None: volane.append(args))
+    _verzia(tmp_path, "2026.11.26-11")
+    r = editor.otvor_porovnanie(r"L:\a.h", r"L:\b.h", None, None, tmp_path)
+    assert r["ok"] is False and "ešte nevie porovnanie" in r["error"] and not volane
+    _verzia(tmp_path, "2026.11.26-12")
+    r = editor.otvor_porovnanie(r"L:\a.h", r"L:\b.h", 5, 7, tmp_path)
+    assert r["ok"] and volane[0][1:] == ["--porovnaj", r"L:\a.h:5", r"L:\b.h:7"]
+    assert editor.otvor_porovnanie("a", "b", None, None, tmp_path / "prazdno")["ok"] is False
+
+
+def test_api_compare_in_editor(tmp_path, monkeypatch):
+    import app
+    a, b, c = tmp_path / "a.h", tmp_path / "b.mpf", tmp_path / "c.h"
+    for f in (a, b, c):
+        f.write_text("x")
+    cesty = {1: str(a), 2: str(b), 3: str(c), 4: str(a)}
+
+    class Falosne:
+        _known_file = lambda self, i: cesty.get(i)
+
+    volane = []
+    monkeypatch.setattr(app.editor, "otvor_porovnanie",
+                        lambda x, y, la, lb: volane.append((x, y, la, lb)) or {"ok": True})
+    api = Falosne()
+    assert app.Api.compare_in_editor(api, [1])["ok"] is False
+    assert app.Api.compare_in_editor(api, [1, 1])["ok"] is False
+    assert app.Api.compare_in_editor(api, [1, 4])["ok"] is False                     # tá istá cesta pod iným id
+    assert app.Api.compare_in_editor(api, [1, 99])["ok"] is False
+    r = app.Api.compare_in_editor(api, [1, 2], [10, 20])
+    assert r["ok"] and "rôzne typy" in r["warn"] and volane[-1] == (str(a), str(b), 10, 20)
+    r = app.Api.compare_in_editor(api, [1, 3])
+    assert r["ok"] and "warn" not in r

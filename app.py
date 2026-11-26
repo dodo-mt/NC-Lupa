@@ -702,6 +702,27 @@ class Api:
         res = self.open_file(file_id)
         return {**res, "fallback": True, "note": r["error"]}
 
+    def compare_in_editor(self, ids: list, lines: list | None = None) -> dict:
+        """Dva súbory (poradie = A vľavo, B vpravo) do porovnania v NC Editore. Rôzne prípony = upozornenie `warn`
+        (porovnanie sa aj tak otvorí). lines = voliteľné riadky nálezov, kde sa kurzor nastaví."""
+        ids = [int(i) for i in (ids or [])]
+        if len(ids) != 2 or ids[0] == ids[1]:
+            return {"ok": False, "error": "Vyber dva rôzne súbory."}
+        paths = [self._known_file(i) for i in ids]
+        for p in paths:
+            if not p or not os.path.exists(p):
+                return {"ok": False, "error": f"Súbor neexistuje alebo nie je v databáze:\n{p or '?'}"}
+        if os.path.normcase(paths[0]) == os.path.normcase(paths[1]):
+            return {"ok": False, "error": "Vyber dva rôzne súbory."}
+        ln = list(lines or [None, None]) + [None, None]
+        r = editor.otvor_porovnanie(paths[0], paths[1], ln[0], ln[1])
+        if r.get("ok"):
+            e1, e2 = (os.path.splitext(p)[1].lower() for p in paths)
+            if e1 != e2:
+                r["warn"] = (f"Pozor: porovnávaš rôzne typy programov ({e1 or '?'} a {e2 or '?'}) – porovnanie rôznych "
+                             "riadení zvyčajne nedáva zmysel.")
+        return r
+
     def open_folder(self, file_id: int | None = None, folder: str | None = None) -> dict:
         """Otvorí Prieskumník – pri súbore ho v priečinku označí."""
         if file_id is not None:
@@ -834,11 +855,30 @@ class ObsahApi:
         if self._run is not None:
             self._run.stop()
 
+    def context(self, file_id: int, line: int, around: int = 5) -> dict:
+        """Riadky okolo nálezu (panel pod zoznamom). Posledný prečítaný súbor sa drží v pamäti – pohyb medzi nálezmi
+        v tom istom súbore je hneď. Chyba čítania = {'ok': False, 'error'}, hľadanie to nezastaví."""
+        path = self._main._known_file(int(file_id))
+        if not path:
+            return {"ok": False, "error": "Súbor nie je v databáze."}
+        try:
+            st = os.stat(path)
+            key = (path, st.st_mtime_ns, st.st_size)
+            if getattr(self, "_ctx_cache", (None, None))[0] != key:
+                with open(path, "rb") as f:
+                    self._ctx_cache = (key, obsah.dekoduj(f.read()))
+        except OSError as e:
+            return {"ok": False, "error": f"Súbor sa nedá prečítať: {e.strerror or e}"}
+        return {"ok": True, "path": path, **obsah.kontext(self._ctx_cache[1], int(line), max(0, min(int(around), 30)))}
+
     def open_file(self, file_id: int) -> dict:
         return self._main.open_file(file_id)
 
     def open_in_editor(self, file_id: int, line: int | None = None) -> dict:
         return self._main.open_in_editor(file_id, line)
+
+    def compare_in_editor(self, ids: list, lines: list | None = None) -> dict:
+        return self._main.compare_in_editor(ids, lines)
 
     def open_folder(self, file_id: int) -> dict:
         return self._main.open_folder(file_id=file_id)

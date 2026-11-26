@@ -16,6 +16,7 @@ let estTimer = null;
 let sugIdx = -1;
 let sugItems = [];
 let hlRx = null;
+let marks = [];    // indexy nálezov označených na porovnanie (Ctrl+klik): [A, B]
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -169,7 +170,9 @@ async function go() {
   makeHl(p);
   const r = await api.start(p);
   if (!r.ok) { msg(r.error); return; }
-  hits = []; next = 0; selIdx = -1;
+  hits = []; next = 0; selIdx = -1; marks = [];
+  applyMarks();
+  $('obCtx').hidden = true;
   $('obRows').innerHTML = '';
   $('obEmpty').hidden = true;
   $('obProg').hidden = false;
@@ -186,6 +189,7 @@ async function poll() {
     const start = hits.length;
     hits.push(...s.hits);
     $('obRows').insertAdjacentHTML('beforeend', s.hits.map((h, k) => rowHtml(h, start + k)).join(''));
+    if (marks.length) applyMarks();
   }
   next = s.next;
   const pct = s.total ? Math.round((s.scanned / s.total) * 100) : 100;
@@ -209,16 +213,64 @@ function stop() {
 }
 
 // --- výber riadka a akcie ---------------------------------------------------------------
+function applyMarks() {
+  document.querySelectorAll('#obRows tr').forEach((tr) => {
+    const k = marks.indexOf(Number(tr.dataset.i));
+    if (k < 0) { tr.removeAttribute('data-mark'); tr.firstElementChild.removeAttribute('data-m'); }
+    else { tr.dataset.mark = 'AB'[k]; tr.firstElementChild.dataset.m = 'AB'[k]; }
+  });
+  $('obCmp').disabled = marks.length !== 2;
+  $('obCmp').title = marks.length === 2
+    ? `Porovnať v NC Editore: A ${hits[marks[0]].name}  ↔  B ${hits[marks[1]].name}`
+    : 'Ctrl+klik označí dva nálezy (A, B) – potom ich súbory porovná v NC Editore';
+}
+function toggleMark(i) {
+  const k = marks.indexOf(i);
+  if (k >= 0) marks.splice(k, 1);
+  else { marks.push(i); if (marks.length > 2) marks.shift(); }     // tretí označený nahradí najstarší
+  applyMarks();
+}
+async function compareMarked() {
+  if (marks.length !== 2) return;
+  const [a, b] = marks.map((i) => hits[i]);
+  if (a.file_id === b.file_id) { msg('Označ dva rôzne súbory (oba nálezy sú z toho istého).'); return; }
+  const r = await api.compare_in_editor([a.file_id, b.file_id], [a.line, b.line]);
+  msg(r.ok ? (r.warn || `Porovnanie otvorené: A ${a.name} ↔ B ${b.name}`) : r.error);
+}
+
 function enableActions() {
   const on = selIdx >= 0;
   ['obEditor', 'obOpen', 'obTree', 'obFolder', 'obCopy'].forEach((id) => { $(id).disabled = !on; });
 }
+let ctxTok = 0;
+const ctxSoon = debounce(showContext, 70);
+async function showContext() {
+  const h = cur();
+  const box = $('obCtx');
+  if (!h) { box.hidden = true; return; }
+  const tok = ++ctxTok;
+  const r = await api.context(h.file_id, h.line, 5);
+  if (tok !== ctxTok) return;      // medzitým sa vybralo iné
+  box.hidden = false;
+  $('obCtxH').textContent = `${h.path}  ·  riadok ${h.line}` + (r.ok && r.total ? ` z ${nf(r.total)}` : '');
+  if (!r.ok) { $('obCtxB').innerHTML = `<div><span class="n"></span><span>${esc(r.error)}</span></div>`; return; }
+  if (!r.lines.length) { $('obCtxB').innerHTML = '<div><span class="n"></span><span>Riadok už v súbore nie je (súbor sa zmenil od skenu).</span></div>'; return; }
+  $('obCtxB').innerHTML = r.lines.map(([n, t]) => {
+    const klass = n === h.line ? 'cur' : (hlRx && hlRx.test(t) ? 'hit' : '');
+    if (hlRx) hlRx.lastIndex = 0;
+    return `<div class="${klass}"><span class="n">${n}</span><span>${highlight(t)}</span></div>`;
+  }).join('');
+  const el = $('obCtxB').querySelector('.cur');
+  if (el) el.scrollIntoView({ block: 'center' });
+}
+
 function selectRow(i) {
   selIdx = i;
   document.querySelectorAll('#obRows tr.sel').forEach((r) => r.classList.remove('sel'));
   const tr = document.querySelector(`#obRows tr[data-i="${i}"]`);
   if (tr) { tr.classList.add('sel'); tr.scrollIntoView({ block: 'nearest' }); }
   enableActions();
+  ctxSoon();
 }
 const cur = () => hits[selIdx];
 async function act(fn) {
@@ -279,7 +331,13 @@ async function boot() {
   $('obScope').addEventListener('blur', () => setTimeout(hideSug, 150));
   ['obDays', 'obMine'].forEach((id) => $(id).addEventListener('change', updateEstimate));
   document.querySelectorAll('input[name="obMode"]').forEach((r) => r.addEventListener('change', () => { $('obQ').placeholder = r.value === 'regex' && r.checked ? 'Regulárny výraz, napr. TOOL CALL (12|13)' : 'Hľadaný text v NC programoch, napr. TOOL CALL 25 alebo M6'; }));
-  $('obRows').addEventListener('click', (e) => { const tr = e.target.closest('tr'); if (tr) selectRow(Number(tr.dataset.i)); });
+  $('obRows').addEventListener('click', (e) => {
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    if (e.ctrlKey) toggleMark(Number(tr.dataset.i));
+    selectRow(Number(tr.dataset.i));
+  });
+  $('obCmp').onclick = compareMarked;
   $('obRows').addEventListener('dblclick', (e) => { const tr = e.target.closest('tr'); if (tr) { selectRow(Number(tr.dataset.i)); openEditor(); } });
   $('obEditor').onclick = openEditor;
   $('obOpen').onclick = () => act((h) => api.open_file(h.file_id));

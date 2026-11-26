@@ -38,6 +38,16 @@ def najdi_riadky(text: str, rx: re.Pattern, rx_viac: re.Pattern | None, na_subor
     return out
 
 
+def kontext(text: str, riadok: int, okolo: int = 5, max_znakov: int = 400) -> dict:
+    """Riadky okolo nálezu: {'line', 'first', 'total', 'lines': [(číslo, text)]}; riadok mimo súboru = prázdny zoznam."""
+    riadky = text.splitlines()
+    if not 1 <= riadok <= len(riadky):
+        return {"line": riadok, "first": riadok, "total": len(riadky), "lines": []}
+    od, do = max(1, riadok - okolo), min(len(riadky), riadok + okolo)
+    return {"line": riadok, "first": od, "total": len(riadky),
+            "lines": [(i, riadky[i - 1].rstrip()[:max_znakov]) for i in range(od, do + 1)]}
+
+
 class Hladanie:
     """Jedno bežiace hľadanie. subory: [{id, path, name, size, job_id, job, customer, folder}]."""
 

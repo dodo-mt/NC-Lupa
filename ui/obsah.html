@@ -49,8 +49,13 @@
   </table>
   <div class="ob-empty" id="obEmpty">Zadaj text a stlač Enter. Prehľadáva sa naživo na disku, preto ju zúž zákazníkom alebo skupinou programov.</div>
 </main>
+<section class="ob-ctx" id="obCtx" hidden aria-label="Okolie nálezu">
+  <div class="ob-ctx-h" id="obCtxH"></div>
+  <pre class="ob-ctx-b" id="obCtxB"></pre>
+</section>
 <footer class="ob-foot">
   <button type="button" class="btn primary" id="obEditor" disabled title="Otvoriť súbor v NC Editore na nájdenom riadku (Enter alebo dvojklik)">Otvoriť v NC Editore</button>
+  <button type="button" class="btn" id="obCmp" disabled title="Ctrl+klik označí dva nálezy (A, B) – potom ich súbory porovná v NC Editore">Porovnať v NC Editore</button>
   <button type="button" class="btn" id="obOpen" disabled title="Otvoriť vybraný súbor v predvolenom programe">Otvoriť súbor</button>
   <button type="button" class="btn" id="obTree" disabled title="Ukázať súbor v strome Lupy">Ukázať v strome</button>
   <button type="button" class="btn" id="obFolder" disabled title="Otvoriť priečinok súboru v Prieskumníkovi">Priečinok</button>

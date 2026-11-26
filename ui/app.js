@@ -659,6 +659,11 @@ function onFileContext(e) {
   selectFile(id);
   const items = [{ title: f.name }, ['Otvoriť', () => openFile(f.id)]];
   if (f.ftype === 'NC') items.push(['Otvoriť v NC Editore', async () => { const r = await api.open_in_editor(f.id); if (r && r.ok === false) toast(r.error); else if (r && r.note) toast(r.note); }]);
+  if (f.ftype === 'NC') {
+    if (cmpIds.length === 2) items.push([`Porovnať označené (A ↔ B) v NC Editore`, () => compareFiles(cmpIds)]);
+    else if (cmpIds.length === 1 && cmpIds[0] !== f.id) items.push(['Porovnať s označeným (A) v NC Editore', () => compareFiles([cmpIds[0], f.id])]);
+    items.push([cmpIds.includes(f.id) ? 'Zrušiť označenie na porovnanie' : 'Označiť na porovnanie (Ctrl+klik)', () => toggleCmp(f.id)]);
+  }
   if (f.target != null) items.push(['Prejsť na cieľ odkazu', () => gotoLink(f)]);
   items.push(['Ukázať v strome', () => revealFile(f, false)]);
   items.push(['Otvoriť priečinok', () => openFolder(f.id)]);
@@ -1145,6 +1150,29 @@ function galColumns() {
   return Math.max(1, n);
 }
 
+// Porovnanie dvoch NC programov v NC Editore: Ctrl+klik označí súbory (A, B), potom pravé tlačidlo → Porovnať.
+let cmpIds = [];
+function applyCmpMarks() {
+  for (const box of [$('rows'), $('gallery')]) {
+    for (const el of box.children) {
+      const k = cmpIds.indexOf(Number(el.dataset.id));
+      if (k < 0) el.removeAttribute('data-cmp'); else el.dataset.cmp = 'AB'[k];
+    }
+  }
+}
+function toggleCmp(id) {
+  const k = cmpIds.indexOf(id);
+  if (k >= 0) cmpIds.splice(k, 1);
+  else { cmpIds.push(id); if (cmpIds.length > 2) cmpIds.shift(); }
+  applyCmpMarks();
+  const f = (i) => state.files.find((x) => x.id === i);
+  if (cmpIds.length === 1) toast(`A: ${f(cmpIds[0])?.name || ''} – Ctrl+klik na druhý súbor a potom pravé tlačidlo → Porovnať`);
+}
+async function compareFiles(ids) {
+  const r = await api.compare_in_editor(ids);
+  toast(r.ok ? (r.warn || 'Porovnanie otvorené v NC Editore') : r.error);
+}
+
 function selectFile(id, scroll) {
   state.selFile = id;
   const box = state.mode === 'gallery' ? $('gallery') : $('rows');
@@ -1351,6 +1379,7 @@ function bind() {
   }
   $('gallery').addEventListener('click', (e) => {
     const c = e.target.closest('.card');
+    if (c && e.ctrlKey) toggleCmp(Number(c.dataset.id));
     if (c) selectFile(Number(c.dataset.id));
   });
   // dvojklik = ukázať v strome (otvoriť: tlačidlo Otvoriť, dvojklik na náhľad, Enter, pravé tlačidlo)
@@ -1377,8 +1406,11 @@ function bind() {
   // zoznam
   $('rows').addEventListener('click', (e) => {
     const tr = e.target.closest('tr');
+    if (tr && e.ctrlKey) toggleCmp(Number(tr.dataset.id));
     if (tr) selectFile(Number(tr.dataset.id));
   });
+  new MutationObserver(applyCmpMarks).observe($('rows'), { childList: true });
+  new MutationObserver(applyCmpMarks).observe($('gallery'), { childList: true });
   $('rows').addEventListener('dblclick', (e) => {
     const tr = e.target.closest('tr');
     const f = tr && state.files.find((x) => x.id === Number(tr.dataset.id));

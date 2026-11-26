@@ -695,6 +695,13 @@ table.files { width: 100%; min-width: 1000px; border-collapse: collapse; table-l
 }
 .files tbody tr { cursor: default; }
 .files tbody tr:hover { background: #f8fafc; }
+.files tbody tr[data-cmp] { box-shadow: inset 4px 0 0 #7c3aed; background: #f5f3ff; }
+.files tbody tr[data-cmp] td:first-child::before, .card[data-cmp]::before {
+  content: attr(data-cmp); display: inline-block; min-width: 18px; margin-right: 6px; padding: 0 4px; border-radius: 4px;
+  background: #7c3aed; color: #fff; font-size: 11px; font-weight: 700; text-align: center;
+}
+.card[data-cmp] { border: 2px solid #7c3aed; padding: 7px; position: relative; }
+.card[data-cmp]::before { position: absolute; top: 6px; left: 6px; margin: 0; z-index: 2; }
 .files tbody tr.sel { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
 
 .c-type { width: 64px; }
