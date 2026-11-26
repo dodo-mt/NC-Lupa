@@ -562,7 +562,7 @@ class Api:
                 return {"ok": True}
             except Exception:
                 self._settings_win = None
-        win = create_settings_window(from_tray=False)
+        win = create_settings_window(from_tray=False, parent=getattr(self, "_window", None))
         self._settings_win = win
         win.events.closed += lambda: setattr(self, "_settings_win", None)
         return {"ok": True}
@@ -1197,14 +1197,18 @@ class SettingsApi:
             self._window.destroy()
 
 
-def create_settings_window(from_tray: bool):
-    """Okno Nastavenia (samostatné, pamätá si polohu)."""
+def create_settings_window(from_tray: bool, parent=None):
+    """Okno Nastavenia (samostatné, pamätá si veľkosť). S `parent` (hlavné okno Lupy) sa otvorí vycentrované
+    v jeho strede; bez neho (štart z ikony skenu, hlavné okno neexistuje) na naposledy použitom mieste."""
     sapi = SettingsApi(from_tray)
     win = webview.create_window(
         f"Lupa {config.VERSION} – Nastavenia", str(UI_DIR / "nastavenia.html"), js_api=sapi,
-        width=860, height=820, min_size=(640, 480), background_color="#eef1f5")
+        width=860, height=820, min_size=(640, 480), background_color="#eef1f5",
+        hidden=parent is not None)   # druhé okno za behu: before_show prebehne skôr, než sa dá napojiť
     sapi._window = win
-    winstate.attach(win, "nastavenia")
+    winstate.attach(win, "nastavenia", center_on=parent)
+    if parent is not None:
+        winstate.show_centered(win, "nastavenia", parent)   # poloha: stred hlavného okna Lupy
     return win
 
 

@@ -2,6 +2,8 @@
 
 Presunuté z CLAUDE.md bez zmeny textu, od najnovšej verzie. Aktuálna verzia je v `config.VERSION`.
 
+**1.15.2**: (1) **okno Nastavenia sa otvára vycentrované v strede hlavného okna Lupy** (rovnako ako okno hľadania v obsahu; `create_settings_window(parent=…)`, veľkosť sa pamätá; pri štarte z ikony skenu `Lupa.exe --nastavenia` bez hlavného okna ostáva poloha ako doteraz). (2) **Oprava rozbitej diakritiky v `config.py`** (73 riadkov bolo uložených dvojito prekódovaných – `rozloĹľenĂ©` namiesto `rozložené`): opravené názvy skupín v okne Hľadať v obsahu („Gamma GMX archív“, „Edgecam (všeobecné)“…), popisy typov súborov a komentáre; kód sa nezmenil (porovnané tokeny pôvodného a nového súboru, 50 testov prechádza). Overené na vzorkách `.WPD`: súbory `OD…_1UP.WPD` sú textový archív Siemens (`%_N_…_MPF`, `;$PATH=/_N_WKS_DIR/…_WPD`, výmena nástroja `TLCH1(…)`, bez riadku `STROJ:`), takže `wpd` v typoch NC, skupina WFL v hľadaní v obsahu aj rozpoznanie stroja podľa obsahu ostávajú správne.
+
 **1.15.1**: v riadku „Odkazuje na / Odkazujú sem“ je rok pri zákazke popísaný („OD684 **z roku 2018**“ namiesto samotného „2018“);
 tooltip ukáže dátum poslednej zmeny v zákazke.
 
