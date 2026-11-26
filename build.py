@@ -91,6 +91,7 @@ def pyinstaller(script: str, name: str, desc: str, extra: list[str],
         "--icon", str(ICON), "--version-file", str(version_file(name, desc)),
         "--distpath", str(dist), "--workpath", str(BUILD / tag), "--specpath", str(BUILD / tag),
         "--exclude-module", "tkinter",
+        "--paths", str(ROOT.parent / "NC parsery"),     # spoločný balík nc_parsery
         *extra,
     ]
     print(">", " ".join(cmd[3:]))

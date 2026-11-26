@@ -7,6 +7,9 @@ import re
 import threading
 import time
 
+import nc_parsery_cesta  # noqa: F401 – pridá priečinok balíka nc_parsery do sys.path
+from nc_parsery.dekoduj import dekoduj  # noqa: F401 – re-export (app.py: obsah.dekoduj)
+
 
 def preloz_dopyt(text: str, regex: bool, rozlisovat: bool) -> re.Pattern:
     """Text (doslovne) alebo regulárny výraz -> vzor. ValueError s čitateľnou správou pri chybnom výraze."""
@@ -15,14 +18,6 @@ def preloz_dopyt(text: str, regex: bool, rozlisovat: bool) -> re.Pattern:
         return re.compile(text if regex else re.escape(text), flags)
     except re.error as e:
         raise ValueError(f"Chybný regulárny výraz: {e}") from e
-
-
-def dekoduj(data: bytes) -> str:
-    """NC programy bývajú ASCII, komentáre UTF-8 alebo cp1250 – nikdy nevyhodí výnimku."""
-    try:
-        return data.decode("utf-8")
-    except UnicodeDecodeError:
-        return data.decode("cp1250", errors="replace")
 
 
 def najdi_riadky(text: str, rx: re.Pattern, rx_viac: re.Pattern | None, na_subor: int, max_znakov: int = 300):

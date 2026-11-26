@@ -22,6 +22,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import config
 import listy
+import nc_parsery_cesta  # noqa: F401 – pridá priečinok balíka nc_parsery do sys.path
+from nc_parsery import hlavicka
 
 HEAD_BYTES = 4096        # hlavička hyperMILL je v prvých ~10 riadkoch
 MAX_FILES = 500          # zákazka s obrovským počtom programov – ďalšie sa nečítajú
@@ -29,8 +31,6 @@ MAX_EXCELS = 20          # obsah: najnovšie Excely zákazky
 WORKERS = 8              # súbežné čítanie cez sieť
 EXCEL_EXTS = {"xls", "xlsx", "xlsm"}
 
-# „STROJ:“ ako samostatné slovo – inak by sedelo aj „Nastroj: T3025 - FRE-D50…“ (nástrojový list Nastroje.nc z hyperMILLu)
-_STROJ = re.compile(r"(?<![A-Za-z])STROJ\s*:\s*(.+)", re.IGNORECASE)
 _RULES = [(re.compile(p, re.IGNORECASE), name) for p, name in config.MACHINES]
 _SIGNS = [(re.compile(p, re.IGNORECASE), name) for p, name in config.MACHINE_SIGNS]
 _NAMES = [(re.compile(p, re.IGNORECASE), name) for p, name in config.MACHINE_NAMES]
@@ -55,12 +55,9 @@ def read_head(path: str) -> tuple[str | None, str | None]:
     except OSError:
         return None, None
     text = data.decode("cp1250", errors="replace")
-    for line in text.splitlines():
-        m = _STROJ.search(line)
-        if m:
-            txt = m.group(1).strip().rstrip(")").strip()
-            if txt:
-                return txt, None
+    stroj = hlavicka.stroj_z_hlavicky(text)          # riadok `STROJ:` (nc_parsery.hlavicka)
+    if stroj:
+        return stroj, None
     for rx, name in _SIGNS:
         if rx.search(text):
             return None, name
