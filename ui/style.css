@@ -417,6 +417,13 @@ select {
   border: 1px solid #134e4a; border-radius: 999px; background: #ccfbf1; color: #134e4a;
   font-size: 12px; font-weight: 600; cursor: pointer; }
 .lists-badge[hidden] { display: none; }
+/* štítok „Odladené“ v hlavičke zákazky – rovnaký tvar ako štítky úplnosti (Model, PDF, CAM, NC, Listy) */
+.odl-head { font: inherit; font-size: 12px; font-weight: 600; padding: 3px 8px; border: 0; border-radius: 4px;
+  background: #dcfce7; color: #14532d; cursor: pointer; }
+.odl-head[hidden] { display: none; }
+.odl-head:hover { background: #bbf7d0; }
+.odl-head.on { background: #15803d; color: #fff; }
+.odl-head.none, .odl-head.none:hover { background: #f3f4f6; color: var(--muted); cursor: default; }
 .odl-badge { border-color: #14532d; background: #dcfce7; color: #14532d; }
 .odl-badge:hover { background: #bbf7d0; }
 .tag-odl { display: inline-block; margin-left: 8px; padding: 0 6px; border-radius: 999px; background: #dcfce7; color: #14532d;

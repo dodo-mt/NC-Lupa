@@ -29,7 +29,8 @@ MAX_EXCELS = 20          # obsah: najnovšie Excely zákazky
 WORKERS = 8              # súbežné čítanie cez sieť
 EXCEL_EXTS = {"xls", "xlsx", "xlsm"}
 
-_STROJ = re.compile(r"STROJ\s*:\s*(.+)", re.IGNORECASE)
+# „STROJ:“ ako samostatné slovo – inak by sedelo aj „Nastroj: T3025 - FRE-D50…“ (nástrojový list Nastroje.nc z hyperMILLu)
+_STROJ = re.compile(r"(?<![A-Za-z])STROJ\s*:\s*(.+)", re.IGNORECASE)
 _RULES = [(re.compile(p, re.IGNORECASE), name) for p, name in config.MACHINES]
 _SIGNS = [(re.compile(p, re.IGNORECASE), name) for p, name in config.MACHINE_SIGNS]
 _NAMES = [(re.compile(p, re.IGNORECASE), name) for p, name in config.MACHINE_NAMES]

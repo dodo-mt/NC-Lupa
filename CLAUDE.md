@@ -241,6 +241,23 @@ zvýraznením nálezu a hľadaného textu, `ObsahApi.preview`, `Api.get_text_pre
 náhľad z Windows, ak existuje (všeobecná ikona sa nepočíta), inak správa. Bez Office, bez nových knižníc. **↑ ↓ v náhľade = ďalší /
 predchádzajúci súbor v zozname** (preskočí typy bez náhľadu, výber v zozname ide s ním). Overené na ostrých súboroch (PDF, docx, xlsx).
 
+**1.13.0**: **rýchly náhľad (Medzerník) aj pre obrázky a skeny** (typ OBR; PyMuPDF zmenší na `nahlad.SIRKA_OBRAZKA` = 1600 px, viacstranové TIFF
+sa listujú ← →; webp / heic cez náhľad z Windows, inak správa) a **značka „odladené“ v hlavičke zákazky** (štítok s počtom odladených
+NC programov; klik zapne / vypne filter odladených; `Api._odladene_jobs` teraz vracia {zákazka: počet}, počet je aj v tooltipe značky
+v strome). `get_doc_preview` už nikdy nevyhodí výnimku.
+
+**1.13.1**: oprava štítkov strojov: regulárny výraz `STROJ:` sedel aj na konci slova `Nastroj:` (nástrojový list `Nastroje.nc` z hyperMILLu
+má riadky `* Nastroj: T3025   - FRE-D50-PL-S`), takže pri zákazke vznikol falošný „stroj“ s textom nástroja. `STROJ:` je teraz
+samostatné slovo (`stroje._STROJ`, test `tests/test_stroje.py`).
+
+**1.13.2**: štítok „Odladené“ v hlavičke zákazky je hneď **za štítkami úplnosti** (Model, PDF, CAM, NC, Listy) a má ich tvar (4 px, 12/600):
+zelený „✓ Odladené 8“ (klik = filter odladených programov, zapnutý = plne zelený), **sivý „Odladené 0“** pri zákazke s NC programami bez
+odladeného (`Api.get_tree`: `has_nc`), bez NC programov sa nezobrazí.
+
+**1.14.0**: za odladený sa berie aj priečinok **„Zo stroja“** (predvolené `odladene_priecinky` = `odlad*, zo*stroja*`; sedí na `ZO STROJA`,
+`zo stroja`, `zo stroja dmc80`, `ZO_STROJA` …). Na ostrej DB: zákaziek s odladeným programom 2852 → 3396, odladených NC súborov
+10 693 → 20 176. Platí všade (filter, štítky, nástrojový list, porovnanie s odladenou verziou). Vlastný vzor v `lupa.ini` ho prepíše.
+
 **Ďalšie možné kroky**: STL – v práci ho Windows už ukazuje (doplnok), vlastné netreba.
 **Náhľad STP – odložené** (skúška 21.11.2026 mimo projektu): gmsh/OpenCascade načítal STP a rozmery,
 ale vykreslil len 17/47 vzoriek (zlyháva sieť trojuholníkov hlavne pri dieloch z Crea, pády,

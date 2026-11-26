@@ -98,7 +98,7 @@ def _api(tmp_path):
     con.execute("INSERT INTO jobs(id, customer_id, name, path) VALUES (1, 1, 'J', 'y')")
     con.execute("INSERT INTO positions(id, job_id, name, rel_path, path) VALUES (1, 1, 'a', '', 'a')")
     subory = [(1, "a.pdf", "pdf", "PDF"), (2, "a.docx", "docx", "DOC"), (3, "a.xlsx", "xlsx", "XLS"), (4, "z.docx", "docx", "DOC"),
-              (5, "m.dwg", "dwg", "DWG")]
+              (5, "m.dwg", "dwg", "DWG"), (6, "o.png", "png", "OBR"), (7, "zly.png", "png", "OBR")]
     for i, name, ext, ft in subory:
         con.execute("INSERT INTO files(id, position_id, job_id, customer_id, name, ext, ftype, path, size, modified)"
                     " VALUES (?, 1, 1, 1, ?, ?, ?, ?, 10, 1)", (i, name, ext, ft, str(tmp_path / name)))
@@ -108,6 +108,10 @@ def _api(tmp_path):
     vyrob_docx(tmp_path / "a.docx")
     vyrob_xlsx(tmp_path / "a.xlsx")
     (tmp_path / "z.docx").write_bytes(b"nie zip")
+    pix = pymupdf.Pixmap(pymupdf.csRGB, pymupdf.IRect(0, 0, 2400, 1800), False)
+    pix.clear_with(200)
+    pix.save(str(tmp_path / "o.png"))
+    (tmp_path / "zly.png").write_bytes(b"nie obrazok")
 
     class Falosne:
         def _q(self, sql, args=()):
@@ -131,3 +135,6 @@ def test_api_get_doc_preview(tmp_path):
     assert "nepodarilo" in app.Api.get_doc_preview(api, 4)["error"]            # pokazený docx
     assert app.Api.get_doc_preview(api, 5)["ok"] is False                       # DWG nemá rýchly náhľad
     assert app.Api.get_doc_preview(api, 99)["ok"] is False
+    r = app.Api.get_doc_preview(api, 6)                                         # obrázok sa zmenší na SIRKA_OBRAZKA
+    assert r["ok"] and r["kind"] == "obrazok" and r["pages"] == 1 and r["src"].startswith("data:image/png;base64,")
+    assert app.Api.get_doc_preview(api, 7)["ok"] is False                       # pokazený obrázok = správa, nie výnimka

@@ -12,8 +12,6 @@ import subprocess
 import sys
 import threading
 import time
-import zipfile
-from xml.etree import ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -217,7 +215,9 @@ class Api:
             if j["id"] in linked:
                 j["linked"] = True
             if j["id"] in odladene:
-                j["odl"] = True
+                j["odl"] = odladene[j["id"]]
+            if "NC" in jtypes.get(j["id"], ()):
+                j["has_nc"] = True                       # sivý štítok „Odladené 0“ pri zákazke s NC bez odladeného programu
         for c in customers:
             c["jobs"] = by_cust.get(c["id"], [])
         return customers
@@ -405,13 +405,13 @@ class Api:
         except OSError as e:
             return {"ok": False, "error": f"Súbor sa nepodarilo uložiť: {e.strerror or e}"}
 
-    def _odladene_jobs(self) -> set[int]:
-        """Zákazky, ktoré majú aspoň jeden NC súbor v priečinku odlad* (odladene.py) – značka pri zákazke v strome.
-        Jeden dopyt na celú databázu pri načítaní stromu."""
+    def _odladene_jobs(self) -> dict[int, int]:
+        """Zákazky, ktoré majú aspoň jeden NC súbor v priečinku odlad* (odladene.py) -> počet takých programov
+        (značka pri zákazke v strome aj v hlavičke). Jeden dopyt na celú databázu pri načítaní stromu."""
         cond, args = config.ODLADENE.sql("p")
-        return {r["job_id"] for r in self._q(
-            "SELECT DISTINCT f.job_id FROM files f JOIN positions p ON p.id = f.position_id"
-            f" WHERE f.ftype = 'NC' AND {cond}", args)}
+        return {r["job_id"]: r["n"] for r in self._q(
+            "SELECT f.job_id, COUNT(*) AS n FROM files f JOIN positions p ON p.id = f.position_id"
+            f" WHERE f.ftype = 'NC' AND {cond} GROUP BY f.job_id", args)}
 
     def get_doc_preview(self, file_id: int, page: int = 0, sheet: int = 0) -> dict:
         """Rýchly náhľad (medzerník) PDF, Wordu a Excelu (nahlad.py). PDF: strana `page` ako PNG; .docx: odseky a tabuľky;
@@ -427,6 +427,18 @@ class Api:
                 png, n = nahlad.pdf_strana(f["path"], int(page))
                 return {**zaklad, "kind": "pdf", "pages": n, "page": max(0, min(int(page), n - 1)),
                         "src": "data:image/png;base64," + base64.b64encode(png).decode("ascii")}
+            if f["ftype"] == "OBR":                                 # obrázok / sken: PyMuPDF (aj viacstranové TIFF)
+                try:
+                    png, n = nahlad.pdf_strana(f["path"], int(page), nahlad.SIRKA_OBRAZKA)
+                    return {**zaklad, "kind": "obrazok", "pages": n, "page": max(0, min(int(page), n - 1)),
+                            "src": "data:image/png;base64," + base64.b64encode(png).decode("ascii")}
+                except Exception:                  # webp, heic… PyMuPDF nepozná: náhľad z Windows
+                    r = thumbs.get_thumb(f["path"], f["ftype"], "l")
+                    if r["ok"] and r.get("kind") != "icon":
+                        data = Path(r.pop("file")).read_bytes()
+                        return {**zaklad, "kind": "obrazok", "pages": 1, "page": 0,
+                                "src": "data:image/png;base64," + base64.b64encode(data).decode("ascii")}
+                    return {"ok": False, "error": "Tento formát obrázka nemá rýchly náhľad – otvor súbor."}
             if ext in ("docx", "docm"):
                 return {**zaklad, "kind": "word", **nahlad.word(f["path"])}
             if ext in ("xlsx", "xlsm"):
@@ -437,7 +449,7 @@ class Api:
                     data = Path(r.pop("file")).read_bytes()
                     return {**zaklad, "kind": "obrazok", "src": "data:image/png;base64," + base64.b64encode(data).decode("ascii")}
                 return {"ok": False, "error": "Starý formát (.doc / .xls) – náhľad nie je k dispozícii, otvor súbor."}
-        except (OSError, ValueError, KeyError, zipfile.BadZipFile, ET.ParseError, RuntimeError) as e:
+        except Exception as e:                                   # náhľad nikdy nezhodí okno
             return {"ok": False, "error": f"Náhľad sa nepodarilo vytvoriť: {e}"}
         return {"ok": False, "error": "Rýchly náhľad je pre NC programy, textové súbory, PDF, Word a Excel."}
 
@@ -925,7 +937,7 @@ class Api:
         zhody = ([k for k in kand if k["name"].casefold() == nazov]
                  or [k for k in kand if Path(k["name"]).stem.casefold() == stem])
         if not zhody:
-            return {"ok": False, "error": "V zákazke sa nenašiel odladený program s rovnakým menom (priečinok odlad*)."}
+            return {"ok": False, "error": "V zákazke sa nenašiel odladený program s rovnakým menom (priečinok odladené alebo Zo stroja)."}
         if len(zhody) > 1:
             return {"ok": True, "vyber": [{"id": k["id"], "name": k["name"], "folder": k["folder"]} for k in zhody]}
         res = self.compare_in_editor([f["id"], zhody[0]["id"]])

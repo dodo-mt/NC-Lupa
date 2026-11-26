@@ -15,6 +15,8 @@ def test_je_odladene_podla_priecinka():
     assert p.je_odladene("Odladené\\NC")                  # pred aj za ďalšími priečinkami
     assert p.je_odladene("NC/ODLADENÉ/stare")
     assert p.je_odladene("NC\\Odladene programy")
+    assert p.je_odladene("NC\\DMC 160\\Zo stroja") and p.je_odladene("zo_stroja\\x") and p.je_odladene("NC\\ZO STROJA\\nove")
+    assert not p.je_odladene("NC\\zoznam") and not p.je_odladene("NC\\stroja")            # len „Zo … stroja“
     assert not p.je_odladene("NC\\neodladene")              # len priečinok odlad*, nie obsahujúci „odlad“
     assert not p.je_odladene("NC\\stare\\nove")
     assert not p.je_odladene("")
@@ -29,7 +31,7 @@ def test_vlastne_vzory_z_ini():
 
 def test_sql_zhoduje_sa_s_python_pravidlom(tmp_path):
     cesty = ["", "NC", "NC\\DMC 160\\odladene", "odladene", "Odladené\\NC", "NC\\neodladene", "NC\\odladene2\\x",
-             "NC\\stare", "odlad", "NC\\a_odladene", "NC\\100%odlad"]
+             "NC\\stare", "odlad", "NC\\a_odladene", "NC\\100%odlad", "NC\\Zo stroja", "Zo_Stroja\\NC", "NC\\zoznam"]
     con = db.open_rw(tmp_path / "t.sqlite")
     con.execute("INSERT INTO customers(id, name, path) VALUES (1, 'K', 'x')")
     con.execute("INSERT INTO jobs(id, customer_id, name, path) VALUES (1, 1, 'J', 'y')")
@@ -40,7 +42,8 @@ def test_sql_zhoduje_sa_s_python_pravidlom(tmp_path):
     sql, args = p.sql("p")
     z_sql = {r[0] for r in con.execute(f"SELECT rel_path FROM positions p WHERE {sql}", args)}
     z_py = {c for c in cesty if p.je_odladene(c)}
-    assert z_sql == z_py == {"NC\\DMC 160\\odladene", "odladene", "Odladené\\NC", "NC\\odladene2\\x", "odlad"}
+    assert z_sql == z_py == {"NC\\DMC 160\\odladene", "odladene", "Odladené\\NC", "NC\\odladene2\\x", "odlad",
+                             "NC\\Zo stroja", "Zo_Stroja\\NC"}
     con.close()
 
 
@@ -108,7 +111,7 @@ class Falosne2:
 def test_zakazky_s_odladenymi_programami(tmp_path):
     import app
     api = Falosne2(_db_s_odladenymi(tmp_path))
-    assert app.Api._odladene_jobs(api) == {1}                    # prázdny / bez NC priečinok odladene nestačí
+    assert app.Api._odladene_jobs(api) == {1: 1}                  # prázdny / bez NC priečinok odladene nestačí
 
 
 def test_rychly_nahlad_textu(tmp_path):

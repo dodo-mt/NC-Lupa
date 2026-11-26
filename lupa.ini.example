@@ -35,9 +35,9 @@ listy_obsah_min = 2
 ; čítanie obsahu dokumentov: najviac N minút na jeden sken (prvé prejdenie L:\ sa rozloží), 0 = vypnuté
 listy_minutes = 10
 
-; Odladené programy: NC súbor v priečinku s takýmto menom (kdekoľvek pod zákazkou / pozíciou) – filter „Len odladené
+; Odladené programy (priečinok „odladené“ alebo „Zo stroja“): NC súbor v priečinku s takýmto menom (kdekoľvek pod zákazkou / pozíciou) – filter „Len odladené
 ; programy“ v Lupe a v hľadaní v obsahu. Vzory oddelené čiarkou, veľké/malé písmená ani diakritika nehrajú rolu.
-odladene_priecinky = odlad*
+odladene_priecinky = odlad*, zo*stroja*
 
 ; Ikona skenu pri hodinách: bežný sken každých N minút (najmenej 5)
 scan_minutes = 60

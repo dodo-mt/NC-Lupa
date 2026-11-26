@@ -1,15 +1,15 @@
-"""Odladené programy = NC súbor v priečinku `odlad*` (odladene, Odladené, ODLADENE …) kdekoľvek pod zákazkou / pozíciou.
+"""Odladené programy = NC súbor v priečinku `odlad*` (odladene, Odladené …) alebo `Zo stroja` (zo*stroja*) kdekoľvek pod zákazkou / pozíciou.
 
 Rozhoduje len cesta v zákazke (positions.rel_path), obsah súboru ani hlavička `ODLADOVAL` nie. Priečinky ako
 `neodladene`, `stare` a pod. sa za odladené nepočítajú. Vzory (fnmatch, oddelené čiarkou) sú v lupa.ini
-`odladene_priecinky`, predvolene `odlad*`. Veľké/malé písmená a diakritika nehrajú rolu.
+`odladene_priecinky`, predvolene `odlad*, zo*stroja*` (program odladený na stroji sa ukladá do „Zo stroja“). Veľké/malé písmená a diakritika nehrajú rolu.
 """
 import fnmatch
 import unicodedata
 
 from listy import _like
 
-PREDVOLENE = "odlad*"
+PREDVOLENE = "odlad*, zo*stroja*"
 
 
 def _norm(s: str) -> str:
@@ -18,8 +18,10 @@ def _norm(s: str) -> str:
 
 class Pravidlo:
     def __init__(self, ini: dict | None = None):
-        raw = (ini or {}).get("odladene_priecinky", PREDVOLENE) or PREDVOLENE
-        self.vzory = [_norm(p.strip()) for p in str(raw).split(",") if p.strip()] or [PREDVOLENE]
+        def vzory(raw):
+            return [_norm(p.strip()) for p in str(raw).split(",") if p.strip()]
+
+        self.vzory = vzory((ini or {}).get("odladene_priecinky", PREDVOLENE)) or vzory(PREDVOLENE)
 
     def je_odladene(self, rel_path: str) -> bool:
         """`NC\\DMC 160\\Odladené` -> True; `NC\\neodladene` -> False (pozerá sa na celé názvy priečinkov)."""

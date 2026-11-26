@@ -13,6 +13,7 @@ import pymupdf
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 S = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+SIRKA_OBRAZKA = 1600       # obrázky a skeny sa na náhľad zmenšia na túto šírku
 MAX_BLOKOV = 3000          # Word: najviac odsekov a tabuliek
 MAX_RIADKOV = 300          # Excel: najviac riadkov listu
 MAX_STLPCOV = 40

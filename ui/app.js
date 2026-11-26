@@ -208,7 +208,7 @@ function renderTree() {
       for (const j of c.jobs) {
         const jOpen = state.openJobs.has(j.id);
         out.push(`<div class="node job${jOpen ? ' open' : ''}${isSelNode(j.id, '') ? ' sel' : ''}" data-job="${j.id}" style="padding-left:22px">
-          <span class="tw">${j.subdirs ? ICON_CHEVRON : ''}</span><span class="lbl">${esc(j.name)}</span>${j.linked ? `<span class="lk" title="Odkazy .lnk na iné zákazky alebo z iných zákaziek">${ICON_LINK}</span>` : ''}${j.odl ? `<span class="lk odl" title="Zákazka obsahuje odladené NC programy (priečinok odladené). Klik = vybrať zákazku a ukázať len odladené programy.">${ICON_ODL}</span>` : ''}${complStatus(j.missing)}</div>`);
+          <span class="tw">${j.subdirs ? ICON_CHEVRON : ''}</span><span class="lbl">${esc(j.name)}</span>${j.linked ? `<span class="lk" title="Odkazy .lnk na iné zákazky alebo z iných zákaziek">${ICON_LINK}</span>` : ''}${j.odl ? `<span class="lk odl" title="Zákazka obsahuje ${j.odl} ${j.odl === 1 ? 'odladený NC program' : j.odl >= 2 && j.odl <= 4 ? 'odladené NC programy' : 'odladených NC programov'} (priečinok odladené alebo Zo stroja). Klik = vybrať zákazku a ukázať len odladené programy.">${ICON_ODL}</span>` : ''}${complStatus(j.missing)}</div>`);
         if (jOpen && state.positions[j.id]) renderDirs(out, j.id, buildDirTree(state.positions[j.id]), 2);
       }
     }
@@ -912,6 +912,21 @@ async function renderMachines(jobId, rel = '') {
   box.hidden = false;
 }
 
+// značka „odladené“ v hlavičke zákazky: počet odladených NC programov; klik zapne / vypne filter len odladených programov
+function renderOdlHead(f) {
+  const el = $('odlHead');
+  const n = f ? f.job.odl || 0 : 0;
+  if (!f || (!n && !f.job.has_nc)) { el.hidden = true; return; }       // bez NC programov nie je čo odlaďovať
+  el.hidden = false;
+  el.classList.toggle('none', !n);
+  el.classList.toggle('on', !!n && !!state.odladene);
+  el.disabled = !n;
+  el.textContent = n ? `✓ Odladené ${n}` : 'Odladené 0';
+  el.title = !n ? 'Zákazka nemá žiadny odladený NC program (priečinok odladené alebo Zo stroja)'
+    : state.odladene ? 'Zobrazené sú len odladené programy – klik = ukázať všetko'
+      : `Zákazka obsahuje ${n} ${n === 1 ? 'odladený NC program' : n >= 2 && n <= 4 ? 'odladené NC programy' : 'odladených NC programov'}. Klik = ukázať len odladené programy.`;
+}
+
 function renderHead() {
   const all = state.scope === 'all';
   const f = state.sel && state.sel.job ? findJob(state.sel.job) : null;
@@ -942,6 +957,7 @@ function renderHead() {
   $('heading').innerHTML = heading;
   if ($('simClose')) $('simClose').onclick = () => exitSimilar();
   renderCompl();
+  renderOdlHead(f && !state.similar && !all ? f : null);
   renderLinks(f && !state.similar && !all ? f.job.id : null);
   renderMachines(f && !state.similar && !all ? f.job.id : null, state.sel ? state.sel.rel : '');
 
@@ -1313,7 +1329,7 @@ function bindToolList() {
 // Word: odseky a tabuľky, Excel: tabuľka listu (← → listy). Šípky hore / dole = ďalší / predchádzajúci súbor v zozname.
 // Medzerník / Esc zavrie. Presný vzhľad dokumentov to nie je (len obsah).
 const QP_KW = /TOOL\s+CALL|TOOL\s+DEF|CYCL\s+DEF|CALL\s+LBL|CALL\s+PGM|BEGIN\s+PGM|END\s+PGM|\bT\s*=\s*"[^"]*"|\bM0?6\b|\bM30\b|\bM2\b|GROUP_BEGIN|CYCLE\d+/g;
-const QP_TYPY = ['NC', 'TXT', 'PDF', 'DOC', 'XLS'];
+const QP_TYPY = ['NC', 'TXT', 'PDF', 'DOC', 'XLS', 'OBR'];
 let qpFile = null;
 let qpStav = { page: 0, sheet: 0 };
 let qpTok = 0;
@@ -1339,7 +1355,7 @@ function qpPatka(r) {
   if (r.kind === 'excel') return `List „${r.harky[r.harok]}“ (${r.harok + 1} z ${r.harky.length})` + (r.harky.length > 1 ? ' · ← → listy' : '')
     + (r.orezane ? ` · zobrazených prvých ${r.riadky.length} riadkov` : '') + ' · ↑ ↓ ďalší súbor';
   if (r.kind === 'word') return (r.orezane ? 'Zobrazená len časť dokumentu · ' : '') + 'Text dokumentu bez formátovania · ↑ ↓ ďalší súbor';
-  if (r.kind === 'obrazok') return 'Náhľad z Windows (prvá strana) · ↑ ↓ ďalší súbor';
+  if (r.kind === 'obrazok') return (r.pages > 1 ? `Strana ${r.page + 1} z ${r.pages} · ← → listovanie · ` : r.ftype === 'OBR' ? 'Obrázok · ' : 'Náhľad z Windows (prvá strana) · ') + '↑ ↓ ďalší súbor';
   return r.more ? `Zobrazených prvých ${r.limit.toLocaleString('sk-SK')} riadkov – celý program otvor v NC Editore · ↑ ↓ ďalší súbor`
     : `${r.lines.length.toLocaleString('sk-SK')} riadkov · ↑ ↓ ďalší súbor`;
 }
@@ -1412,7 +1428,7 @@ async function qpNavigate(krok) {
 // ← →: strany PDF alebo listy Excelu
 async function qpListuj(krok) {
   if (!qpFile) return;
-  if (qpFile.ftype === 'PDF') await qpLoad(qpFile, Math.max(0, qpStav.page + krok));
+  if (qpFile.ftype === 'PDF' || qpFile.ftype === 'OBR') await qpLoad(qpFile, Math.max(0, qpStav.page + krok));
   else if (qpFile.ftype === 'XLS') await qpLoad(qpFile, 0, Math.max(0, qpStav.sheet + krok));
 }
 
@@ -1463,7 +1479,7 @@ function renderDetail() {
       <dt>Zákazka</dt><dd>${esc(f.job)}${f.folder ? ' \\ ' + esc(f.folder) : ''}</dd>
       ${link ? `<dt>Odkaz na</dt><dd class="mono d-link">${esc(f.target || 'cieľ sa nedá zistiť')}</dd>` : ''}
       ${state.similar ? `<dt>Podobnosť</dt><dd>${f.query ? 'hľadaný výkres' : `${simPct(f)} %`}</dd>` : ''}
-      ${f.ftype === 'NC' ? `<dt>Stav</dt><dd>${f.odl ? '<span class="tag-odl">odladený</span> (priečinok odladené)' : 'neodladený'}</dd>` : ''}
+      ${f.ftype === 'NC' ? `<dt>Stav</dt><dd>${f.odl ? '<span class="tag-odl">odladený</span> (priečinok odladené / Zo stroja)' : 'neodladený'}</dd>` : ''}
       <dt>Vlastník</dt><dd><strong>${esc(ownerName(f.owner))}</strong></dd>
       <dt>Vytvorený</dt><dd>${fmtDate(f.created)}</dd>
       <dt>Zmenený</dt><dd>${fmtDate(f.modified)}</dd>
@@ -1619,6 +1635,12 @@ function bind() {
   });
   $('listsBadge').addEventListener('click', () => {
     state.lists = false;
+    renderListsChip();
+    refresh();
+  });
+  $('odlHead').addEventListener('click', () => {
+    if ($('odlHead').disabled) return;
+    state.odladene = !state.odladene;
     renderListsChip();
     refresh();
   });
