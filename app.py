@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import webview
@@ -33,6 +34,9 @@ else:
 FILE_COLS = "f.id, f.name, f.ftype, f.path, f.size, f.created, f.modified, f.owner, p.rel_path AS folder"
 SEARCH_LIMIT = 2000  # max. počet riadkov vo výsledku
 STALE_HOURS = 24     # posledný sken starší → v stavovom riadku oranžovo
+TL_MAX_SUBOROV = 400   # nástrojový list: najviac toľko programov naraz
+QUICK_LINES = 5000    # rýchly náhľad (medzerník): najviac toľko riadkov
+QUICK_BYTES = 1_500_000
 SIMILAR_LIMIT = 60   # počet podobných výkresov vo výsledku
 SIMILAR_MIN = 0.3    # slabšie zhody sa neukazujú
 
@@ -205,9 +209,12 @@ class Api:
             j["missing"] = config.missing_parts(jtypes.get(j["id"], set()), jexts.get(j["id"], set()))
             by_cust.setdefault(j.pop("customer_id"), []).append(j)
         linked = self._linked_jobs()
+        odladene = self._odladene_jobs()
         for j in jobs:
             if j["id"] in linked:
                 j["linked"] = True
+            if j["id"] in odladene:
+                j["odl"] = True
         for c in customers:
             c["jobs"] = by_cust.get(c["id"], [])
         return customers
@@ -311,6 +318,117 @@ class Api:
                                   "target": r["target"], "dst": dst})
             self._links = (path, links)
         return self._links[1]
+
+    # --- zoznam nástrojov zákazky / priečinka (nástrojový list do textu) ---------------------------
+    def _tl_vyber(self, p: dict) -> tuple[str, list]:
+        """FROM + WHERE: NC súbory zákazky (job_id), voliteľne len priečinok `rel` a pod ním, voliteľne len odladené."""
+        where = ["f.job_id = ?", "f.ftype = 'NC'", "f.size <= ?"]
+        args = [int(p.get("job_id") or 0), config.OBSAH_MAX_MB * 1048576]
+        rel = p.get("rel") or ""
+        if rel:
+            where.append("(p.rel_path = ? OR p.rel_path LIKE ? ESCAPE '!')")
+            args += [rel, _like_escape(rel) + chr(92) + "%"]
+        if p.get("odladene"):
+            odl, oargs = config.ODLADENE.sql("p")
+            where.append(odl)
+            args += oargs
+        return " FROM files f JOIN positions p ON p.id = f.position_id WHERE " + " AND ".join(where), args
+
+    def tools_list_estimate(self, params: dict) -> dict:
+        """Koľko programov (a MB) sa prečíta pre nástrojový list; `odl_files` = koľko z rozsahu je odladených."""
+        p = params or {}
+        if not p.get("job_id"):
+            return {"ok": False, "error": "Vyber zákazku alebo priečinok v zákazke."}
+        base, args = self._tl_vyber(p)
+        r = self._q("SELECT COUNT(*) AS n, COALESCE(SUM(f.size), 0) AS b" + base, args)
+        vsetky, vargs = self._tl_vyber({**p, "odladene": False})
+        odl, oargs = self._tl_vyber({**p, "odladene": True})
+        n_vsetky = self._q("SELECT COUNT(*) AS n" + vsetky, vargs)[0]["n"]
+        n_odl = self._q("SELECT COUNT(*) AS n" + odl, oargs)[0]["n"]
+        return {"ok": True, "files": r[0]["n"], "mb": round(r[0]["b"] / 1048576, 1), "odl_files": n_odl,
+                "all_files": n_vsetky, "max_files": TL_MAX_SUBOROV}
+
+    def tools_list_build(self, params: dict) -> dict:
+        """Nástrojový list ako text (nastroje.zostav_text): prečíta NC súbory rozsahu vo vláknach a spojí ich nástroje."""
+        p = params or {}
+        if not p.get("job_id"):
+            return {"ok": False, "error": "Vyber zákazku alebo priečinok v zákazke."}
+        base, args = self._tl_vyber(p)
+        subory = self._q("SELECT f.id, f.name, f.path, p.rel_path AS folder" + base + " ORDER BY p.rel_path, f.name", args)
+        if len(subory) > TL_MAX_SUBOROV:
+            return {"ok": False, "error": f"Rozsah je príliš veľký ({len(subory)} programov, najviac {TL_MAX_SUBOROV}) – "
+                                          "vyber priečinok stroja alebo zapni „len odladené“."}
+        info = self._q("SELECT j.name AS job, c.name AS customer FROM jobs j JOIN customers c ON c.id = j.customer_id"
+                       " WHERE j.id = ?", (int(p["job_id"]),))
+        zaklad = info[0] if info else {"job": "", "customer": ""}
+
+        def nacitaj(f):
+            try:
+                with open(f["path"], "rb") as fh:
+                    return {"nazov": f["name"], "priecinok": f["folder"],
+                            "nastroje": nastroje.parsuj(obsah.dekoduj(fh.read()))["nastroje"], "chyba": ""}
+            except OSError as e:
+                return {"nazov": f["name"], "priecinok": f["folder"], "nastroje": [],
+                        "chyba": f"súbor sa nedá prečítať: {e.strerror or e}"}
+
+        with ThreadPoolExecutor(max_workers=config.OBSAH_VLAKNA) as ex:
+            programy = list(ex.map(nacitaj, subory))
+        hlavicka = [("Zákazník", zaklad["customer"]), ("Zákazka", zaklad["job"])]
+        if p.get("rel"):
+            hlavicka.append(("Priečinok", p["rel"]))
+        hlavicka.append(("Programy", ("len odladené, " if p.get("odladene") else "") + f"{len(programy)}"))
+        hlavicka.append(("Dátum", time.strftime("%d.%m.%Y %H:%M")))
+        tex = nastroje.zostav_text(hlavicka, programy)
+        navrh = re.sub(r"[^\w.-]+", "_", f"nastroje_{zaklad['job']}" + (f"_{p['rel']}" if p.get("rel") else "")) + ".txt"
+        return {"ok": True, "text": tex, "programov": len(programy), "chyb": sum(1 for x in programy if x["chyba"]),
+                "nazov_suboru": navrh}
+
+    def save_text_file(self, text: str, nazov: str) -> dict:
+        """Uložiť ako text: dialóg Uložiť (predvolene Plocha – na L: Lupa nezapisuje), súbor sa po uložení otvorí."""
+        win = getattr(self, "_window", None)
+        if win is None:
+            return {"ok": False, "error": "Okno nie je dostupné."}
+        domov = Path.home()
+        adresar = domov / "Desktop" if (domov / "Desktop").is_dir() else domov
+        try:
+            vyber = win.create_file_dialog(webview.FileDialog.SAVE, directory=str(adresar), save_filename=nazov,
+                                           file_types=("Textový súbor (*.txt)",))
+            if not vyber:
+                return {"ok": False, "cancel": True}
+            cesta = vyber if isinstance(vyber, str) else vyber[0]
+            Path(cesta).write_text(text, encoding="utf-8-sig")        # BOM: Poznámkový blok otvorí diakritiku správne
+            os.startfile(cesta)
+            return {"ok": True, "path": cesta}
+        except OSError as e:
+            return {"ok": False, "error": f"Súbor sa nepodarilo uložiť: {e.strerror or e}"}
+
+    def _odladene_jobs(self) -> set[int]:
+        """Zákazky, ktoré majú aspoň jeden NC súbor v priečinku odlad* (odladene.py) – značka pri zákazke v strome.
+        Jeden dopyt na celú databázu pri načítaní stromu."""
+        cond, args = config.ODLADENE.sql("p")
+        return {r["job_id"] for r in self._q(
+            "SELECT DISTINCT f.job_id FROM files f JOIN positions p ON p.id = f.position_id"
+            f" WHERE f.ftype = 'NC' AND {cond}", args)}
+
+    def get_text_preview(self, file_id: int) -> dict:
+        """Rýchly náhľad (medzerník) textového súboru: NC program alebo txt, prvých QUICK_LINES riadkov."""
+        rows = self._q("SELECT name, path, ftype, ext FROM files WHERE id = ?", (file_id,))
+        if not rows:
+            return {"ok": False, "error": "Súbor nie je v databáze."}
+        f = rows[0]
+        if f["ftype"] != "NC" and f["ext"] not in thumbs.TEXT_EXTS:
+            return {"ok": False, "error": "Rýchly náhľad je len pre NC programy a textové súbory."}
+        try:
+            with open(f["path"], "rb") as fh:
+                raw = fh.read(QUICK_BYTES + 1)
+        except OSError as e:
+            return {"ok": False, "error": f"Súbor sa nedá prečítať: {e.strerror or e}"}
+        orezane = len(raw) > QUICK_BYTES
+        lines = obsah.dekoduj(raw[:QUICK_BYTES]).splitlines()
+        if len(lines) > QUICK_LINES:
+            lines, orezane = lines[:QUICK_LINES], True
+        return {"ok": True, "name": f["name"], "path": f["path"], "ftype": f["ftype"], "lines": lines,
+                "more": orezane, "limit": QUICK_LINES}
 
     def _linked_jobs(self) -> set[int]:
         """Zákazky s odkazom na inú zákazku alebo s odkazom z inej (ikonka v strome)."""
@@ -580,6 +698,10 @@ class Api:
             lst, largs = config.list_sql("f", self._has_doclists())
             where.append(lst)
             args += largs
+        if params.get("odladene"):
+            odl, oargs = config.ODLADENE.sql("p")
+            where.append(odl)
+            args += oargs
 
         base = (
             " FROM files f JOIN positions p ON p.id = f.position_id"
@@ -592,6 +714,8 @@ class Api:
             + base + " ORDER BY f.modified DESC LIMIT ?",
             args + [SEARCH_LIMIT],
         )
+        for r in rows:
+            r["odl"] = config.ODLADENE.je_odladene(r.get("folder"))      # značka „odladený“ pri NC súboroch
         return {"rows": rows, "total": total[0]["n"] if total else 0, "limit": SEARCH_LIMIT}
 
     # --- podobné výkresy ----------------------------------------------------
@@ -794,6 +918,10 @@ def _obsah_vyber(p: dict) -> tuple[str, list]:
     if p.get("owner"):
         where.append("f.owner = ?")
         args.append(p["owner"])
+    if p.get("odladene"):                                  # len programy v priečinku odlad* (odladene.py)
+        odl, oargs = config.ODLADENE.sql("p")
+        where.append(odl)
+        args += oargs
     base = (" FROM files f JOIN positions p ON p.id = f.position_id JOIN jobs j ON j.id = f.job_id"
             " JOIN customers c ON c.id = f.customer_id WHERE " + " AND ".join(where))
     return base, args

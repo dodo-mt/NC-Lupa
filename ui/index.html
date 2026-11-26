@@ -95,6 +95,12 @@
           CNC listy
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
         </button>
+        <!-- len odladené programy (priečinok odlad*), ✕ = vypnúť -->
+        <button type="button" class="lists-badge odl-badge" id="odlBadge" hidden
+          title="Len NC programy v priečinku odladené (lupa.ini: odladene_priecinky). Klik = vypnúť.">
+          Odladené
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>
+        </button>
         <span class="count" id="count"></span>
         <div class="viewsw" role="group" aria-label="Zobrazenie">
           <button type="button" data-mode="list" id="modeList" title="Zoznam (Ctrl+G prepína)" aria-label="Zoznam"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"></path><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01" stroke-width="3"></path></svg></button>
@@ -177,6 +183,36 @@
   </form>
 </div>
 <!-- O programe (klik na „Lupa“ vľavo hore) -->
+<!-- zoznam nástrojov zákazky / priečinka (text, tlač) -->
+<div class="qp-back" id="tl" hidden>
+  <div class="qp-box tl-box" role="dialog" aria-modal="true" aria-labelledby="tlTitle">
+    <div class="qp-head">
+      <div class="qp-title"><div class="qp-name" id="tlTitle">Zoznam nástrojov</div><div class="qp-path" id="tlScope"></div></div>
+      <label class="tl-odl" title="Len programy v priečinku odladené (lupa.ini: odladene_priecinky)"><input type="checkbox" id="tlOdl"> Len odladené programy</label>
+      <button type="button" class="btn" id="tlClose" title="Zavrieť (Esc)">Zavrieť</button>
+    </div>
+    <div class="qp-body tl-body"><pre id="tlText" class="tl-text">Načítavam…</pre></div>
+    <div class="qp-foot tl-foot">
+      <span id="tlInfo" class="tl-info"></span>
+      <button type="button" class="btn primary" id="tlSave" disabled title="Uloží text do súboru .txt (predvolene na Plochu) a otvorí ho">Uložiť ako text…</button>
+      <button type="button" class="btn" id="tlPrintBtn" disabled title="Vytlačí zoznam (tlačový dialóg Windows)">Vytlačiť</button>
+      <button type="button" class="btn" id="tlCopy" disabled title="Skopíruje celý text do schránky">Kopírovať</button>
+    </div>
+  </div>
+</div>
+<pre id="tlPrint" aria-hidden="true"></pre>
+<!-- rýchly náhľad textového súboru (medzerník) -->
+<div class="qp-back" id="qp" hidden>
+  <div class="qp-box" role="dialog" aria-modal="true" aria-labelledby="qpName">
+    <div class="qp-head">
+      <div class="qp-title"><div class="qp-name" id="qpName"></div><div class="qp-path" id="qpPath"></div></div>
+      <button type="button" class="btn" id="qpEditor" title="Otvoriť program v NC Editore">Otvoriť v NC Editore</button>
+      <button type="button" class="btn" id="qpClose" title="Zavrieť (Medzerník alebo Esc)">Zavrieť</button>
+    </div>
+    <div class="qp-body" id="qpBody"></div>
+    <div class="qp-foot" id="qpFoot"></div>
+  </div>
+</div>
 <div class="dlg-back" id="aboutDlg" hidden>
   <div class="dlg about" role="dialog" aria-labelledby="aboutTitle">
     <div class="about-head">

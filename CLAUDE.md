@@ -208,6 +208,29 @@ alebo z textu operácie `GROUP_BEGIN(0,"1590 : T933 M6 - …")`; texty v úvodzo
 volaní, klik = NC Editor na prvom volaní. Súbory nad `OBSAH_MAX_MB` (**50 MB**, od 1.7.1; platí aj pre hľadanie v obsahu) sa
 nečítajú. Vzory: anonymizované programy v NC Editore (`tests/data`, `vzorky`). NTX (`fanuc_ntx.nc`) zatiaľ nič nenájde.
 
+**1.8.0**: **odladené programy** (`odladene.py`, `config.ODLADENE`, lupa.ini `odladene_priecinky`, predvolene `odlad*`): odladený =
+NC súbor v priečinku `odlad*` kdekoľvek pod zákazkou / pozíciou (pred aj za ďalšími priečinkami; `neodladene` nie je odladený;
+hlavička `ODLADOVAL` sa nepoužíva – vypĺňa sa zriedka). Filter „Len odladené programy“ v menu Moje filtre (štítok „Odladené ✕“,
+ukladá sa s filtrom), políčko v okne hľadania v obsahu (zúži výber pred čítaním), zelená značka „odladený“ pri NC súboroch
+v zozname a riadok Stav v detaile. Hotové: A. Naplánované: B – zoznam nástrojov zákazky / priečinka (pravý klik v strome, text:
+hlavička „Nástrojový list“, prázdny riadok, potom programy a v každom riadku číslo nástroja + názov; výstup text aj tlač).
+
+**1.9.0**: **značka „odladené“ pri zákazke v strome** (zelená fajka; zákazka s NC súborom v priečinku odlad*, `Api._odladene_jobs`,
+jeden dopyt pri načítaní stromu; klik na značku vyberie zákazku a zapne filter odladených programov – na ostrej DB 2852 zákaziek)
+a **rýchly náhľad textu na Medzerník** (NC program a txt, `Api.get_text_preview`, prvých 5000 riadkov, čísla riadkov, komentáre sivo,
+kľúčové slová tučne, Medzerník / Esc zavrie; tlačidlo Otvoriť v NC Editore). Textový náhľad z detailu súboru zmizol (ostáva
+náhľad PDF a obrázkov); galéria bez zmeny. Značka sa v hlavičke zákazky zatiaľ nezobrazuje, len v strome.
+
+**1.9.1**: tlačidlo **Moje filtre svieti na modro** aj pri zapnutej maske (Len CNC listy / Len odladené programy) – text „CNC listy“,
+„Odladené“ alebo „CNC listy · Odladené“, tooltip vysvetlí; v menu pribudla položka „Vypnúť všetky masky“.
+
+**1.10.0**: **zoznam nástrojov zákazky / priečinka (Nástrojový list)**: pravý klik na zákazku alebo priečinok v strome → „Zoznam
+nástrojov…“ (`Api.tools_list_estimate` / `tools_list_build`, `nastroje.zostav_text`, najviac `TL_MAX_SUBOROV` = 400 programov, čítanie
+vo vláknach). Text: `Nástrojový list`, zarovnaná hlavička (Zákazník, Zákazka, [Priečinok], Programy, Dátum), prázdny riadok a programy;
+pod programom riadok na nástroj `T<číslo>  <názov>` (Siemens bez čísla len názov), poradie = prvé volanie. Predvolene len odladené
+programy, ak ich zákazka má (prepínač v okne). Výstup: Uložiť ako text (dialóg, predvolene Plocha, súbor sa otvorí; `Api.save_text_file`,
+UTF-8 s BOM), Vytlačiť (`window.print()` + tlačový štýl, A4), Kopírovať. Overené na ostrej DB (zákazka s odladenými programami).
+
 **Ďalšie možné kroky**: STL – v práci ho Windows už ukazuje (doplnok), vlastné netreba.
 **Náhľad STP – odložené** (skúška 21.11.2026 mimo projektu): gmsh/OpenCascade načítal STP a rozmery,
 ale vykreslil len 17/47 vzoriek (zlyháva sieť trojuholníkov hlavne pri dieloch z Crea, pády,

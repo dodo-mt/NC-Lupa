@@ -47,6 +47,9 @@ FIELDS = [
     ("listy_obsah", "CNC listy", "Slová v obsahu", "text",
      "Word / Excel s nejasným menom: aspoň „minimum“ z týchto slov (alebo cesta R:\\…) = CNC list.", SCAN),
     ("listy_obsah_min", "CNC listy", "Minimum slov", "int", "Koľko slov z obsahu musí sedieť.", SCAN),
+    ("odladene_priecinky", "Lupa", "Odladené programy – priečinok", "text",
+     "NC súbor v priečinku s takýmto menom (kdekoľvek pod zákazkou / pozíciou) je odladený program. "
+     "Vzory oddelené čiarkou, predvolene odlad*.", BOTH),
     ("zvoncek_dni", "Lupa", "Zvonček – predvolené dni", "int",
      "Počiatočná voľba v menu Nové zákazky (1, 3, 7 alebo 14). Každý si ju vie zmeniť.", LUPA),
     ("spravca", "Lupa", "Správca nastavení", "text",

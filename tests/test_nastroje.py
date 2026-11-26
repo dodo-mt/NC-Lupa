@@ -190,3 +190,26 @@ def test_heidenhain_l_a_ll_z_komentara_nastroj():
 def test_cislo_a_retazce_vo_fanuc_nie_su_volanie():
     text = 'G0 X0\nMSG ("T55 M6 hlaska")\nT73020801(T000) M6\n'
     assert [x["t"] for x in nastroje.parsuj(text)["nastroje"]] == ["73020801"]
+
+
+def test_zostav_text_nastrojoveho_listu():
+    heid = nastroje.parsuj(HEID_NASTROJ)["nastroje"]
+    sin = nastroje.parsuj(SIEMENS_HYPERMILL)["nastroje"]
+    text = nastroje.zostav_text(
+        [("Zákazník", "101270-Firma"), ("Zákazka", "OD00021930"), ("Dátum", "26.11.2026")],
+        [{"nazov": "a.h", "priecinok": "NC\DMC\odladene", "nastroje": heid},
+         {"nazov": "b.mpf", "priecinok": "", "nastroje": sin},
+         {"nazov": "c.h", "priecinok": "NC", "nastroje": []},
+         {"nazov": "d.h", "priecinok": "NC", "nastroje": [], "chyba": "súbor sa nedá prečítať"}])
+    riadky = text.splitlines()
+    assert riadky[0] == "Nástrojový list"
+    assert riadky[1:4] == ["Zákazník : 101270-Firma", "Zákazka  : OD00021930", "Dátum    : 26.11.2026"]   # zarovnané ':'
+    assert riadky[4] == "" and riadky[5] == "a.h   [NC\DMC\odladene]"
+    assert riadky[6] == "  T2965  FRE-RYCH-D16-R1.6-PL-ZCC-CT-S"
+    assert "  T155   HVIE-D10-TK" in riadky                                    # čísla zarovnané do stĺpca
+    assert "  T933  VRT-D5-TK" in riadky and "  T101  FRE-D16-TK" in riadky    # Siemens: číslo z hlavičky
+    assert "  (v programe sa nenašli volania nástrojov)" in riadky and "  (súbor sa nedá prečítať)" in riadky
+    assert text.endswith("\n")
+    bez_cisla = nastroje.zostav_text([("Zákazka", "X")], [{"nazov": "s.mpf", "nastroje": [
+        {"t": "FRE-D32", "cislo": "", "nazov": "FRE-D32"}, {"t": "VRT", "cislo": "", "nazov": "VRT"}]}]).splitlines()
+    assert bez_cisla[-2:] == ["  FRE-D32", "  VRT"]                        # bez čísel len názov

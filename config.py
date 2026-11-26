@@ -9,9 +9,10 @@ import sys
 from pathlib import Path
 
 import listy
+import odladene
 
 # Verzia aplikácie – zvyšovať pri každom vydaní (zobrazuje sa v UI, ikone skenu, logu a vo vlastnostiach exe)
-VERSION = "1.7.1"
+VERSION = "1.10.0"
 
 # Priečinok programu (pri PyInstaller exe = priečinok s exe). Lupa beží z lokálnej kópie
 # v %LOCALAPPDATA% (launcher.py) – spúšťač jej v LUPA_HOME odovzdá svoj priečinok (L:\_Nastroje\lupa),
@@ -31,6 +32,7 @@ _DEFAULTS = {
     "recent_days": "14",
     "prints_minutes": "30",
     "customers": "",
+    "odladene_priecinky": "odlad*",   # priečinok s odladenými NC programami (odladene.py)
     "exclude": "",
     # CNC listy (listy.py): listy_mena, listy_priecinky, listy_obsah, listy_obsah_min, listy_minutes
     **listy.DEFAULTS,
@@ -183,6 +185,7 @@ COMPLETENESS = [
 # CNC listy – pravidlo v listy.py (meno, priečinok PDF, obsah Wordu / Excelu z tabuľky doclists).
 # Lupa: lupa.ini vedľa programu (na L:\_Nastroje\lupa aj vedľa DB); skener: scan_settings()["listy"].
 LIST_RULES = listy.Rules(_ini)
+ODLADENE = odladene.Pravidlo(_ini)
 
 
 def list_sql(f: str = "f", doclists: bool = True) -> tuple[str, list]:

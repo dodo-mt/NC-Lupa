@@ -39,6 +39,7 @@ function params() {
     groups: groupsOn(),
     days: Number($('obDays').value) || 0,
     owner: $('obMine').checked ? init.owner : '',
+    odladene: $('obOdl').checked,
   };
   const text = $('obScope').value.trim();
   if (sel.job_id || sel.customer_id) {
@@ -329,6 +330,8 @@ async function boot() {
     } else if (e.key === 'Escape' && !$('obSug').hidden) { e.stopPropagation(); hideSug(); }
   });
   $('obScope').addEventListener('blur', () => setTimeout(hideSug, 150));
+  $('obOdl').checked = localStorage.getItem('lupa.obsah.odl') === '1';
+  $('obOdl').addEventListener('change', () => { localStorage.setItem('lupa.obsah.odl', $('obOdl').checked ? '1' : '0'); updateEstimate(); });
   ['obDays', 'obMine'].forEach((id) => $(id).addEventListener('change', updateEstimate));
   document.querySelectorAll('input[name="obMode"]').forEach((r) => r.addEventListener('change', () => { $('obQ').placeholder = r.value === 'regex' && r.checked ? 'Regulárny výraz, napr. TOOL CALL (12|13)' : 'Hľadaný text v NC programoch, napr. TOOL CALL 25 alebo M6'; }));
   $('obRows').addEventListener('click', (e) => {

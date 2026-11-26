@@ -183,3 +183,27 @@ def parsuj(text: str) -> dict:
     typ = rozpoznaj(text)
     fn = {"heidenhain": _heidenhain, "sinumerik": _sinumerik, "fanuc": _fanuc}.get(typ)
     return {"typ": typ, "nastroje": fn(riadky) if fn else [], "riadkov": len(riadky)}
+
+
+def zostav_text(hlavicka: list[tuple[str, str]], programy: list[dict]) -> str:
+    """Nástrojový list ako text: zarovnaná hlavička (`Zákazka  : …`), prázdny riadok a programy; pod každým programom
+    riadok na nástroj – číslo T a za ním názov (Siemens bez čísla = len názov). Poradie nástrojov = poradie prvého volania.
+    hlavicka = [(názov, hodnota)], programy = [{'nazov', 'priecinok', 'nastroje': [...], 'chyba': ''}]."""
+    sirka = max((len(k) for k, _ in hlavicka), default=0)
+    out = ["Nástrojový list"]
+    out += [f"{k.ljust(sirka)} : {v}" for k, v in hlavicka]
+    for p in programy:
+        out += ["", p["nazov"] + (f"   [{p['priecinok']}]" if p.get("priecinok") else "")]
+        n = p.get("nastroje") or []
+        if p.get("chyba"):
+            out.append(f"  ({p['chyba']})")
+            continue
+        if not n:
+            out.append("  (v programe sa nenašli volania nástrojov)")
+            continue
+        cisla = [("T" + x["cislo"]) if x.get("cislo") else "" for x in n]
+        w = max(len(c) for c in cisla)
+        for c, x in zip(cisla, n):
+            nazov = x.get("nazov") or ("" if x.get("cislo") else x.get("t", ""))
+            out.append(("  " + (c.ljust(w) + "  " if w else "") + nazov).rstrip())
+    return "\n".join(out) + "\n"

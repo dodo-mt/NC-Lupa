@@ -28,6 +28,7 @@ const state = {
   selFile: null,
   mode: 'list',        // 'list' | 'gallery'
   lists: false,        // len CNC listy (config.list_sql)
+  odladene: false,     // len odladené programy (priečinok odlad*, odladene.py)
   similar: null,       // podobné výkresy: {id, name} hľadaného PDF, inak null
   sortBeforeSim: null, // triedenie pred podobnými výkresmi (obnoví sa po zavretí)
 };
@@ -207,7 +208,7 @@ function renderTree() {
       for (const j of c.jobs) {
         const jOpen = state.openJobs.has(j.id);
         out.push(`<div class="node job${jOpen ? ' open' : ''}${isSelNode(j.id, '') ? ' sel' : ''}" data-job="${j.id}" style="padding-left:22px">
-          <span class="tw">${j.subdirs ? ICON_CHEVRON : ''}</span><span class="lbl">${esc(j.name)}</span>${j.linked ? `<span class="lk" title="Odkazy .lnk na iné zákazky alebo z iných zákaziek">${ICON_LINK}</span>` : ''}${complStatus(j.missing)}</div>`);
+          <span class="tw">${j.subdirs ? ICON_CHEVRON : ''}</span><span class="lbl">${esc(j.name)}</span>${j.linked ? `<span class="lk" title="Odkazy .lnk na iné zákazky alebo z iných zákaziek">${ICON_LINK}</span>` : ''}${j.odl ? `<span class="lk odl" title="Zákazka obsahuje odladené NC programy (priečinok odladené). Klik = vybrať zákazku a ukázať len odladené programy.">${ICON_ODL}</span>` : ''}${complStatus(j.missing)}</div>`);
         if (jOpen && state.positions[j.id]) renderDirs(out, j.id, buildDirTree(state.positions[j.id]), 2);
       }
     }
@@ -232,6 +233,10 @@ async function ensurePositions(jobId) {
 async function onTreeClick(e) {
   const node = e.target.closest('.node');
   if (!node) return;
+  if (e.target.closest('.lk.odl')) {            // značka „odladené“: vybrať zákazku a zapnúť filter odladených programov
+    state.odladene = true;
+    renderListsChip();
+  }
   const onTwisty = !!e.target.closest('.tw');
 
   if (node.dataset.cust) {
@@ -580,6 +585,7 @@ function onTreeContext(e) {
     items.push('-');
     items.push(['Otvoriť priečinok', () => openPath(pos ? pos.path : f.job.path)]);
     items.push(['Hľadať v obsahu programov…', () => openContentSearch({ customer_id: f.cust.id, job_id: f.job.id, label: `${f.cust.name} \\ ${f.job.name}` })]);
+    items.push(['Zoznam nástrojov…', () => openToolList(jobId, rel)]);
   }
   if (items.length) items.push('-');
   items.push(['Zbaliť celý strom', () => {
@@ -744,6 +750,7 @@ async function refresh() {
     res = await api.search({
       q: state.q,
       lists: state.lists,
+      odladene: state.odladene,
       owner: state.owner,
       types,
       scope: state.scope,
@@ -766,6 +773,7 @@ async function refresh() {
 // Nová zákazka: „→ Odkazuje na“ staré zákazky (klik = cieľ odkazu v strome).
 // Stará zákazka: „← Odkazujú sem“ novšie zákazky (klik = samotný odkaz v novej zákazke).
 const jobLinks = new Map();   // jobId -> {to: [...], from: [...]} (Api.get_links)
+const ICON_ODL = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="m8 12.5 2.8 2.8L16 9.5"></path></svg>';
 const ICON_LINK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"></path><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"></path></svg>';
 const LINKS_MAX = 8;
 
@@ -975,7 +983,7 @@ function renderFiles() {
     return `<tr data-id="${f.id}"${f.id === state.selFile ? ' class="sel"' : ''}>
     <td class="c-type">${badge(f.ftype)}</td>
     <td class="c-sim">${simCell(f)}</td>
-    <td class="c-name" title="${esc(nameTitle)}">${highlight(f.name)}${link ? `<span class="lnk-to">→ ${esc(shortPath(f.target) || '?')}</span>` : ''}</td>
+    <td class="c-name" title="${esc(nameTitle)}">${highlight(f.name)}${f.ftype === 'NC' && f.odl ? '<span class="tag-odl" title="Program je v priečinku odladené">odladený</span>' : ''}${link ? `<span class="lnk-to">→ ${esc(shortPath(f.target) || '?')}</span>` : ''}</td>
     <td class="c-folder" title="${esc(locTitle)}">${esc(loc)}</td>
     <td class="c-owner">${esc(ownerName(f.owner))}</td>
     <td class="c-date k-created" title="${fmtDate(f.created)}">${fmtDay(f.created)}</td>
@@ -1212,6 +1220,142 @@ async function loadTools(f) {
   };
 }
 
+// --- zoznam nástrojov zákazky / priečinka (Nástrojový list: text, tlač) ------------------------
+// Rozsah = vybraná zákazka alebo priečinok; predvolene len odladené programy, ak ich zákazka má.
+let tl = null;      // {jobId, rel, text, name}
+function tlMsg(t) { $('tlText').textContent = t; $('tlSave').disabled = $('tlPrintBtn').disabled = $('tlCopy').disabled = true; }
+
+async function openToolList(jobId, rel, odl) {
+  const f = findJob(jobId);
+  tl = { jobId, rel: rel || '', text: '', name: 'nastroje.txt' };
+  $('tlTitle').textContent = 'Zoznam nástrojov';
+  $('tlScope').textContent = (f ? `${f.cust.name} \\ ${f.job.name}` : '') + (rel ? ` \\ ${rel}` : '');
+  $('tlOdl').checked = odl !== undefined ? odl : !!(f && f.job.odl);
+  $('tl').hidden = false;
+  await tlBuild();
+}
+
+async function tlBuild() {
+  if (!tl) return;
+  const mine = tl;
+  tlMsg('Načítavam programy…');
+  $('tlInfo').textContent = '';
+  const params = { job_id: mine.jobId, rel: mine.rel, odladene: $('tlOdl').checked };
+  const e = await api.tools_list_estimate(params);
+  if (mine !== tl) return;
+  if (!e.ok) { tlMsg(e.error); return; }
+  if (!e.files) {
+    tlMsg(params.odladene && e.all_files
+      ? `V tomto rozsahu nie je žiadny odladený program (je tu ${e.all_files} neodladených). Vypni „Len odladené programy“.`
+      : 'V tomto rozsahu nie sú žiadne NC programy.');
+    return;
+  }
+  $('tlInfo').textContent = `Číta sa ${e.files} programov (${e.mb} MB)…`;
+  const r = await api.tools_list_build(params);
+  if (mine !== tl) return;
+  if (!r.ok) { tlMsg(r.error); $('tlInfo').textContent = ''; return; }
+  mine.text = r.text;
+  mine.name = r.nazov_suboru;
+  $('tlText').textContent = r.text;
+  $('tlSave').disabled = $('tlPrintBtn').disabled = $('tlCopy').disabled = false;
+  $('tlInfo').textContent = `${r.programov} programov` + (r.chyb ? ` · ${r.chyb} sa nedalo prečítať` : '')
+    + (params.odladene ? '' : e.odl_files ? ` · z toho ${e.odl_files} odladených` : '');
+}
+
+function closeToolList() {
+  $('tl').hidden = true;
+  $('tlText').textContent = '';
+  tl = null;
+}
+
+function bindToolList() {
+  $('tlClose').onclick = closeToolList;
+  $('tlOdl').addEventListener('change', tlBuild);
+  $('tlSave').onclick = async () => {
+    if (!tl || !tl.text) return;
+    const r = await api.save_text_file(tl.text, tl.name);
+    if (r.ok) toast(`Uložené: ${r.path}`);
+    else if (!r.cancel) toast(r.error);
+  };
+  $('tlCopy').onclick = async () => {
+    if (!tl || !tl.text) return;
+    const r = await api.copy_text(tl.text);
+    toast(r.ok ? 'Zoznam nástrojov skopírovaný' : r.error);
+  };
+  $('tlPrintBtn').onclick = () => {
+    if (!tl || !tl.text) return;
+    $('tlPrint').textContent = tl.text;
+    window.print();
+  };
+  $('tl').addEventListener('mousedown', (e) => { if (e.target === $('tl')) closeToolList(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('tl').hidden) { e.preventDefault(); e.stopPropagation(); closeToolList(); }
+  }, true);
+}
+
+// --- rýchly náhľad textu (Medzerník) ---------------------------------------------------------
+// NC program a txt: veľké okno s číslami riadkov, komentáre sivo, kľúčové slová zvýraznené. Medzerník / Esc zavrie.
+const QP_KW = /TOOL\s+CALL|TOOL\s+DEF|CYCL\s+DEF|CALL\s+LBL|CALL\s+PGM|BEGIN\s+PGM|END\s+PGM|\bT\s*=\s*"[^"]*"|\bM0?6\b|\bM30\b|\bM2\b|GROUP_BEGIN|CYCLE\d+/g;
+let qpFile = null;
+
+function qpLine(t) {
+  const i = t.indexOf(';');
+  const code = i >= 0 ? t.slice(0, i) : t;
+  let out = '';
+  let last = 0;
+  QP_KW.lastIndex = 0;
+  for (let m; (m = QP_KW.exec(code));) {
+    out += esc(code.slice(last, m.index)) + '<b>' + esc(m[0]) + '</b>';
+    last = m.index + m[0].length;
+  }
+  out += esc(code.slice(last));
+  return i >= 0 ? out + `<span class="c">${esc(t.slice(i))}</span>` : out;
+}
+
+async function openQuickPreview() {
+  const f = state.files.find((x) => x.id === state.selFile);
+  if (!f || (f.ftype !== 'NC' && f.ftype !== 'TXT')) return;
+  const r = await api.get_text_preview(f.id);
+  if (!r.ok) { toast(r.error); return; }
+  qpFile = f;
+  $('qpName').textContent = r.name;
+  $('qpPath').textContent = r.path;
+  $('qpEditor').hidden = f.ftype !== 'NC';
+  $('qpBody').innerHTML = r.lines.map((t, i) => `<div class="ln"><span class="n">${i + 1}</span><span>${qpLine(t)}</span></div>`).join('');
+  $('qpFoot').textContent = r.more ? `Zobrazených prvých ${r.limit.toLocaleString('sk-SK')} riadkov – celý program otvor v NC Editore.`
+    : `${r.lines.length.toLocaleString('sk-SK')} riadkov`;
+  $('qp').hidden = false;
+  $('qpBody').scrollTop = 0;
+}
+
+function closeQuickPreview() {
+  $('qp').hidden = true;
+  $('qpBody').innerHTML = '';
+  qpFile = null;
+}
+
+function bindQuickPreview() {
+  $('qpClose').onclick = closeQuickPreview;
+  $('qpEditor').onclick = async () => {
+    const f = qpFile;
+    if (!f) return;
+    const r = await api.open_in_editor(f.id);
+    if (r && r.ok === false) toast(r.error);
+  };
+  $('qp').addEventListener('mousedown', (e) => { if (e.target === $('qp')) closeQuickPreview(); });
+  document.addEventListener('keydown', (e) => {
+    const inField = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement && document.activeElement.tagName);
+    if (!$('qp').hidden) {
+      if (e.key === ' ' || e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeQuickPreview(); }
+      return;
+    }
+    if (e.key === ' ' && !inField && !e.ctrlKey && !e.altKey && !e.metaKey && state.selFile != null && $('aboutDlg').hidden) {
+      e.preventDefault();
+      openQuickPreview();
+    }
+  }, true);
+}
+
 // --- detail ----------------------------------------------------------------
 function renderDetail() {
   const f = state.files.find((x) => x.id === state.selFile);
@@ -1235,6 +1379,7 @@ function renderDetail() {
       <dt>Zákazka</dt><dd>${esc(f.job)}${f.folder ? ' \\ ' + esc(f.folder) : ''}</dd>
       ${link ? `<dt>Odkaz na</dt><dd class="mono d-link">${esc(f.target || 'cieľ sa nedá zistiť')}</dd>` : ''}
       ${state.similar ? `<dt>Podobnosť</dt><dd>${f.query ? 'hľadaný výkres' : `${simPct(f)} %`}</dd>` : ''}
+      ${f.ftype === 'NC' ? `<dt>Stav</dt><dd>${f.odl ? '<span class="tag-odl">odladený</span> (priečinok odladené)' : 'neodladený'}</dd>` : ''}
       <dt>Vlastník</dt><dd><strong>${esc(ownerName(f.owner))}</strong></dd>
       <dt>Vytvorený</dt><dd>${fmtDate(f.created)}</dd>
       <dt>Zmenený</dt><dd>${fmtDate(f.modified)}</dd>
@@ -1266,6 +1411,12 @@ let thumbTimer;
 function loadThumb(id) {
   const seq = ++thumbSeq;
   clearTimeout(thumbTimer);
+  const sf = state.files.find((x) => x.id === id);
+  if (sf && (sf.ftype === 'NC' || sf.ftype === 'TXT')) {       // textový náhľad je na Medzerník (rýchly náhľad)
+    const b = $('preview');
+    if (b) b.innerHTML = '<span class="pv-msg">Rýchly náhľad textu:<br><b>Medzerník</b></span>';
+    return;
+  }
   thumbTimer = setTimeout(async () => {
     const r = await api.get_thumb(id);
     const box = $('preview');
@@ -1384,6 +1535,11 @@ function bind() {
   });
   $('listsBadge').addEventListener('click', () => {
     state.lists = false;
+    renderListsChip();
+    refresh();
+  });
+  $('odlBadge').addEventListener('click', () => {
+    state.odladene = false;
     renderListsChip();
     refresh();
   });
@@ -1707,6 +1863,7 @@ function pickOwner(owner) {
 // štítok „CNC listy ✕“ nad zoznamom – len keď je zapnutý (filtrom)
 function renderListsChip() {
   $('listsBadge').hidden = !state.lists;
+  $('odlBadge').hidden = !state.odladene;
 }
 
 function renderOwnerChip() {
@@ -1756,7 +1913,7 @@ function viewSummary(v) {
   const types = v.lists ? `CNC listy${v.types ? ` (${v.types.join(' + ')})` : ''}`
     : v.types ? v.types.join(' + ') : 'všetky typy';
   const scope = v.scope === 'all' ? $('scopeAll').textContent : 'aktuálna zákazka';
-  return [who, types, v.q ? `„${v.q}“` : '', scope, v.mode === 'gallery' ? 'galéria' : 'zoznam']
+  return [who, types, v.odladene ? 'len odladené' : '', v.q ? `„${v.q}“` : '', scope, v.mode === 'gallery' ? 'galéria' : 'zoznam']
     .filter(Boolean).join(' · ');
 }
 
@@ -1765,7 +1922,7 @@ function currentView() {
   return {
     owner: state.owner && state.owner === meOwner() ? '@me' : state.owner,
     types: all ? null : state.typeKeys.filter((k) => state.typesOn.has(k)),
-    q: state.q, lists: !!state.lists, scope: state.scope, mode: state.mode,
+    q: state.q, lists: !!state.lists, odladene: !!state.odladene, scope: state.scope, mode: state.mode,
   };
 }
 
@@ -1774,7 +1931,7 @@ function currentView() {
 function sameView(a, b) {
   const t = (v) => (v.types ? [...v.types].sort().join(',') : '*');
   return (a.owner || '') === (b.owner || '') && t(a) === t(b) && (a.q || '') === (b.q || '')
-    && !!a.lists === !!b.lists && (a.scope || 'job') === (b.scope || 'job');
+    && !!a.lists === !!b.lists && !!a.odladene === !!b.odladene && (a.scope || 'job') === (b.scope || 'job');
 }
 
 function activeView() {
@@ -1785,10 +1942,13 @@ function activeView() {
 
 function renderViewsBtn() {
   const v = activeView();
-  $('viewsLabel').textContent = v ? v.name : 'Moje filtre';
-  $('viewsBtn').classList.toggle('active', !!v);
+  // zapnuté masky (Len CNC listy / Len odladené programy) rozsvietia tlačidlo, aj keď nejde o uložený filter
+  const masky = [state.lists && 'CNC listy', state.odladene && 'Odladené'].filter(Boolean);
+  $('viewsLabel').textContent = v ? v.name : (masky.join(' · ') || 'Moje filtre');
+  $('viewsBtn').classList.toggle('active', !!v || masky.length > 0);
   $('viewsBtn').title = v ? `Filter „${v.name}“: ${viewSummary(v)} – klik = vypnúť alebo vybrať iný`
-    : 'Moje filtre – vlastník, typy, hľadanie, rozsah a zobrazenie naraz';
+    : masky.length ? `Aktívna maska: ${masky.join(' + ')} – klik = zmeniť alebo vypnúť`
+      : 'Moje filtre – vlastník, typy, hľadanie, rozsah a zobrazenie naraz';
 }
 
 let beforeView = null;   // rozsah a zobrazenie pred zapnutím filtra (vráti ich vypnutie)
@@ -1797,7 +1957,7 @@ let beforeView = null;   // rozsah a zobrazenie pred zapnutím filtra (vráti ic
 function clearView() {
   const back = beforeView || { scope: state.sel ? 'job' : 'all', mode: state.mode };
   beforeView = null;
-  applyView({ owner: '', types: null, q: '', lists: false, scope: back.scope, mode: back.mode }, true);
+  applyView({ owner: '', types: null, q: '', lists: false, odladene: false, scope: back.scope, mode: back.mode }, true);
 }
 
 function applyView(v, restoring = false) {
@@ -1813,6 +1973,7 @@ function applyView(v, restoring = false) {
   state.typesOn = new Set(v.types ? v.types.filter((k) => state.typeKeys.includes(k)) : state.typeKeys);
   renderChips();
   state.lists = !!v.lists;
+  state.odladene = !!v.odladene;
   renderListsChip();
   state.q = v.q || '';
   $('q').value = state.q;
@@ -1842,6 +2003,20 @@ function openViewsMenu() {
     renderListsChip();
     refresh();
   } });
+  // programy v priečinku odlad* (odladene.py) – zapnúť/vypnúť kedykoľvek, uloží sa s filtrom
+  items.push({ text: 'Len odladené programy', checked: !!state.odladene, action: () => {
+    state.odladene = !state.odladene;
+    renderListsChip();
+    refresh();
+  } });
+  if (state.lists || state.odladene) {
+    items.push(['Vypnúť všetky masky', () => {
+      state.lists = false;
+      state.odladene = false;
+      renderListsChip();
+      refresh();
+    }]);
+  }
   items.push('-');
   items.push(['Uložiť aktuálny filter…', () => openViewDialog('')]);
   if (list.length) {
@@ -2199,6 +2374,8 @@ function bindAbout() {
   $('brand').onclick = openAbout;
   $('settingsBtn').onclick = () => api.open_settings();
   $('obsahBtn').onclick = () => openContentSearch();
+  bindQuickPreview();
+  bindToolList();
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.shiftKey && (e.key === 'F' || e.key === 'f')) { e.preventDefault(); openContentSearch(); }
   });
