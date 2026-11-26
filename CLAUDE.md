@@ -3,7 +3,7 @@
 Windows aplikácia na prehliadanie a vyhľadávanie zákaziek na sieťovom disku `L:\`.
 Používateľ: CNC programátor (hyperMILL, Heidenhain, Sinumerik). Komunikácia, UI aj komentáre v kóde **po slovensky**.
 
-**Aktuálna verzia: 1.15.2** (`config.VERSION`). História verzií: `CHANGELOG.md`.
+**Aktuálna verzia: 1.16.0** (`config.VERSION`). História verzií: `CHANGELOG.md`.
 CNC znalosti (stroje, prípony, syntax NC a .pof, disky L:\ R:\, vzorky) sú v osobnom skille `cnc-programy` (`%USERPROFILE%\.claude\skills\cnc-programy`).
 
 ## Cieľ
@@ -45,7 +45,7 @@ skupiny; zmena sa do DB prenesie pri ďalšom skene (`fix_types`).
   kopíruje hneď (pásik %), potom na pozadí. L:\ nedostupný → posledná kópia + upozornenie.
 - **Moduly**: `odtlacky.py` (odtlačky PDF pre podobné výkresy; po zmene algoritmu zvýš `odtlacky.VERSION`), `listy.py`
   (CNC listy podľa mena aj obsahu, tabuľka `doclists`), `stroje.py` (stroje zákazky, počíta Lupa pri kliku), `obsah.py`
-  (hľadanie v NC naživo), `nastroje.py` (nástroje NC programov), `odladene.py`, `nahlad.py`, `vykres.py` (DXF/DWG),
+  (hľadanie v NC naživo), `nastroje.py` (nástroje NC programov) + `kod_nastroja.py` (dekódovanie osemmiestnych kódov nástrojov: typ, priemer, polomer; skill `cnc-programy`), `odladene.py`, `nahlad.py`, `vykres.py` (DXF/DWG),
   `editor.py` (NC Editor), `winstate.py`, `nastavenia.py`, `tray.py`.
 - **Balenie**: `python build.py` → `dist\Lupa\`: `app\` (onedir + `version.txt`), `Lupa.exe` = spúšťač (`launcher.py`,
   onefile), `lupa-sken.exe` (onefile), `deploy\`, `lupa.ini.example`. Celý priečinok → `L:\_Nastroje\lupa\`

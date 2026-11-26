@@ -213,3 +213,137 @@ def test_zostav_text_nastrojoveho_listu():
     bez_cisla = nastroje.zostav_text([("Zákazka", "X")], [{"nazov": "s.mpf", "nastroje": [
         {"t": "FRE-D32", "cislo": "", "nazov": "FRE-D32"}, {"t": "VRT", "cislo": "", "nazov": "VRT"}]}]).splitlines()
     assert bez_cisla[-2:] == ["  FRE-D32", "  VRT"]                        # bez čísel len názov
+
+
+WPD = """%_N_OD000000_1UP_MPF
+;$PATH=/_N_WKS_DIR/_N_OD000000_1UP_WPD
+;OD000000_1UP
+
+; pouzite nastroje:
+;  N10    - 01103103 - HSS navrtavak A3.15
+;  N20    - 73020803 - neutralny hrubovaci noz 80*-R0.8(CNMG)
+;  N30    - 6J102553 - radiusova freza R5
+
+N10 TLCH1("01103103",-90,0,1) ; HSS navrtavak A3.15
+N20 G1 X1
+N30 TLCH1("73020803",0,0,1)
+N40 TLCH1("01103103",-90,0,1) ; HSS navrtavak A3.15
+; N50 TLCH1("99999999",0,0,1) ; zakomentovane volanie
+N60 TLCH1("6J102553",0,0,1) ; radiusova freza R5
+"""
+
+
+def test_wpd_archiv_tlch1():
+    v = nastroje.parsuj(WPD)
+    n = podla_kluca(v)
+    assert v["typ"] == "sinumerik"
+    assert [x["t"] for x in v["nastroje"]] == ["01103103", "73020803", "6J102553"]    # zakomentované volanie sa nepočíta
+    assert n["01103103"]["pocet"] == 2 and n["01103103"]["prvy"] == 10
+    assert n["01103103"]["nazov"] == "HSS navrtavak A3.15"                          # názov z komentára za volaním
+    assert n["73020803"]["nazov"] == "neutralny hrubovaci noz 80*-R0.8(CNMG)"      # bez komentára: zo zoznamu v hlavičke
+    assert n["6J102553"]["prvy"] == 15 and n["6J102553"]["nazov"] == "radiusova freza R5"
+    assert all(x["cislo"] == x["t"] for x in v["nastroje"])                          # číslo = kód nástroja (aj `6J102553`)
+
+
+def test_tlch1_bez_uvodzoviek_a_v_komentari_nie_je_nastroj():
+    assert nastroje.parsuj('; TLCH1("01103103",0,0,1)\nG1 X1\n')["typ"] == ""
+    assert nastroje.parsuj("TLCH1(1,0,0,1)\nG1 X1\n")["nastroje"] == []
+
+
+GAMMA = """ G18 M813
+ DIAMON
+ ;T00-neutralny noz 55st na cisto
+ T="73030402"
+ TC(2,0,0,2,135,0)
+ SETMS(3)
+ ;T08-vonkajsi zapichovak pravy B3
+ T="74020202R"
+ TC(1)
+ T="02110002"
+ G0 X1
+ G0 X2
+ G0 X3
+ G0 X4
+ G0 X5
+"""
+
+
+def test_gmx_gamma_vymena_cez_tc_a_nazov_z_komentara():
+    v = nastroje.parsuj(GAMMA)
+    n = podla_kluca(v)
+    assert v["typ"] == "sinumerik"
+    assert [x["t"] for x in v["nastroje"]] == ["73030402", "74020202R"]           # T="02110002" bez TC je len predvolenie
+    assert n["73030402"]["nazov"] == "neutralny noz 55st na cisto" and n["73030402"]["prvy"] == 4
+    assert n["73030402"]["cislo"] == "73030402" and n["73030402"]["r"] == "0.4"    # polomer z kódu
+    assert n["74020202R"]["cislo"] == "74020202R" and n["74020202R"]["r"] == "0.2"  # písmeno za kódom nevadí
+    assert n["74020202R"]["nazov"] == "vonkajsi zapichovak pravy B3"
+
+
+def test_tc_namiesto_m6_len_ako_vymena_nie_v_komentari():
+    assert nastroje.parsuj('T="73030402"\nG1 X1\n; TC(2,0,0,2,135,0)\nG1 X2\nG1 X3\nG1 X4\nG1 X5\n')["nastroje"] == []
+
+
+EIA = """(OD000000_1UP)
+( POSTUP         : OD000000_1UP)
+( POUZITE NASTROJE: )
+ (  N10    - 01103104 - HSS NAVRTAVAK A3.15 )
+ ( N20    | T71010804 | VONKAJSI HRUBOVACI NOZ LAVY 80*-R0.8 )(45STUP)
+ ( N30    | T40100301 | TK freza D3 )
+N10 T01103104 M6
+G0 X1
+N20 T71010804 M6
+G0 X2
+N30 T40100301 M6
+N40 T71010804 M6
+"""
+
+
+def test_mazak_eia_nazvy_z_hlavicky_a_rozmery_z_kodu():
+    v = nastroje.parsuj(EIA)
+    n = podla_kluca(v)
+    assert v["typ"] == "fanuc"
+    assert n["01103104"]["nazov"] == "HSS NAVRTAVAK A3.15" and n["01103104"]["d"] == "3.1"
+    assert n["71010804"]["nazov"] == "VONKAJSI HRUBOVACI NOZ LAVY 80*-R0.8"          # `(45STUP)` za zátvorkou sa odreže
+    assert n["71010804"]["r"] == "0.8" and n["71010804"]["pocet"] == 2
+    assert n["40100301"]["nazov"] == "TK freza D3" and n["40100301"]["d"] == "3"
+
+
+def test_bez_nazvu_nahradi_nazov_typu_z_kodu():
+    n = podla_kluca(nastroje.parsuj('N10 T="86030402"\nTC(1)\n'))
+    assert n["86030402"]["nazov"] == "vnútorný hladiaci nôž ľavý" and n["86030402"]["r"] == "0.4"
+    assert podla_kluca(nastroje.parsuj(HEID))["2965"]["d"] == "50"                    # Heidenhain sa z kódu nedekóduje (D z hlavičky)
+
+
+# príklady z Excelu `kodovanie_viena.xls` + overené na skutočných programoch (kód, typ, priemer, polomer)
+KODY = [
+    ("70010446", "vonkajší hrubovací nôž pravý", "", "0.4"),
+    ("73020803", "neutrálny nástroj", "", "0.8"),
+    ("86010403", "vnútorný hladiaci nôž ľavý", "", "0.4"),
+    ("87540046", "plátkový vrták nepoháňaný", "40", ""),
+    ("05155081", "plátkový vrták", "55", ""),
+    ("02212582", "HSS alebo tvrdokovový vrták", "12.5", ""),
+    ("10116083", "metrický závitník", "16", ""),
+    ("12210482", "rúrkový závitník", "10.4", ""),
+    ("01103103", "NC navrtávač", "3.1", ""),
+    ("40102053", "HSS alebo tvrdokovová valcová fréza", "20", ""),
+    ("49212055", "frézovacia hlava", "120", ""),
+    ("46105053", "plátková uhlová fréza 90°", "50", ""),
+    ("6J102553", "plátková rádiusová fréza", "25", "5"),
+    ("5A101003", "HSS alebo tvrdokovová rádiusová fréza", "10", "0.5"),
+    ("74020202R", "vonkajší zapichovák radiálny", "", "0.2"),
+]
+
+
+def test_dekodovanie_kodu_nastroja():
+    import kod_nastroja
+    for kod, typ, d, r in KODY:
+        assert kod_nastroja.dekoduj(kod) == {"typ": typ, "d": d, "r": r}, kod
+    assert kod_nastroja.dekoduj("72010501")["r"] == ""                                # závitový nôž: RR nie je zdokumentované
+    for nie_kod in ("90010101", "95010101", "FRE-D12-TK", "7302080", "733020803", "", None, "T73020803"):
+        assert kod_nastroja.dekoduj(nie_kod) is None, nie_kod                         # 90 / 95 sa prekrývajú, tvar nesedí
+
+
+def test_je_kod():
+    import kod_nastroja
+    assert kod_nastroja.je_kod("73020803") and kod_nastroja.je_kod("6J102553") and kod_nastroja.je_kod("74020202R")
+    assert not kod_nastroja.je_kod("2965") and not kod_nastroja.je_kod("FRE-D32-PL-S") and not kod_nastroja.je_kod("")

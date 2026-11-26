@@ -11,8 +11,17 @@ volaní nástroja rovnaké komentáre pre Heidenhain aj Siemens:
               v hlavičke `; T933 VRT-D5-TK | R=2.5 R2=0. LCUT=35` (podľa názvu) alebo v texte operácie
               (`GROUP_BEGIN(0,"1590 : T933 M6 - vrtat",…)`, `MSG(…)`). Texty v úvodzovkách sa pri hľadaní volania ignorujú.
   Fanuc/Mazak: `T73020801(T000) M6` – len číslo (výklad osemmiestneho čísla zatiaľ nepoznáme).
+  Siemens archív `.WPD` (textový archív z CAM: `%_N_…_MPF`, `;$PATH=/_N_WKS_DIR/…_WPD`): výmena nástroja
+              `N10 TLCH1("01103103",-90,0,1) ; HSS navrtavak A3.15` – číslo = osemmiestny kód v úvodzovkách, názov z komentára
+              za volaním, inak zo zoznamu v hlavičke `;  N10    - 01103103 - HSS navrtavak A3.15`. M6 sa nehľadá.
+  Sústruhy GMX / Gamma (Siemens): `;T00-neutralny noz 55st` tesne nad `T="73030402"` a výmena `TC(2,0,0,2,135,0)` namiesto M6.
+  Mazak `.EIA`: názvy zo zoznamu v hlavičke `( N10 | T73020801 | názov )` / `(  N10    - 01103104 - názov )`.
+Osemmiestny kód nástroja (Siemens `T="73030402"`, Fanuc/Mazak `T73020801`) sa dekóduje (kod_nastroja.py): chýbajúci priemer / polomer
+sa doplní z kódu, chýbajúci názov nahradí názov typu nástroja.
 """
 import re
+
+import kod_nastroja
 
 MAX_NASTROJOV = 500
 M6_DOHLAD = 4            # Sinumerik: M6 sa hľadá v riadku s T a v nasledujúcich N riadkoch
@@ -36,6 +45,13 @@ _RETAZCE = re.compile(r"(T\s*=\s*\"[^\"]*\")|\"[^\"]*\"")
 _OP_T = re.compile(r"(?<![A-Za-z0-9_$])T(\d+)\s+M0?6")
 _M6 = re.compile(r"(?<![A-Za-z0-9_])M0?6(?![0-9])")
 _FANUC_T = re.compile(r"(?<![A-Za-z0-9_$])T(\d{1,8})(?![0-9A-Za-z_])")
+_TLCH1 = re.compile(r"(?<![A-Za-z0-9_$])TLCH1\s*\(\s*\"([^\"]*)\"", re.IGNORECASE)         # výmena nástroja v archíve .WPD
+_WPD_ZOZNAM = re.compile(r"^\s*;\s*N\d+\s+-\s+(\S+)\s+-\s+(\S.*?)\s*$")                  # `;  N10    - 01103103 - názov`
+_TC = re.compile(r"(?<![A-Za-z0-9_$])TC\s*\(", re.IGNORECASE)                            # výmena nástroja na GMX / Gamma (namiesto M6)
+_S_POPIS = re.compile(r"^\s*;\s*T\d+\s*-\s*(\S.*?)\s*$")                                 # `;T00-neutralny noz 55st` nad T="kód"
+_EIA_ZOZNAM = re.compile(                                                                # `( N10 | T73020801 | názov )(45STUP)`
+    r"^\s*\(\s*N\d+\s+[|-]\s*T?([0-9A-Z]{8})\s*[|-]\s*(\S.*?)\s*\)\s*(?:\([^)]*\)\s*)?$")
+POPIS_DOHLAD = 2         # `;Tnn-názov` platí pre volanie najviac o toľko riadkov nižšie
 
 
 def _cislo(x: str) -> str:
@@ -62,7 +78,8 @@ def rozpoznaj(text: str) -> str:
     """'heidenhain' | 'sinumerik' | 'fanuc' | '' (v programe sa nenašlo nič, čo by sa dalo čítať ako nástroj)."""
     if re.search(r"^\s*(?:\d+\s+)?TOOL\s+CALL\s", text, re.IGNORECASE | re.MULTILINE):
         return "heidenhain"
-    if re.search(r"(?<![A-Za-z0-9_$])T\s*=\s*\"", text) or re.search(r"(?m)^[^;\n]*(?<![A-Za-z0-9_$])T\s*=\s*\d", text):
+    if (re.search(r"(?<![A-Za-z0-9_$])T\s*=\s*\"", text) or re.search(r"(?m)^[^;\n]*(?<![A-Za-z0-9_$])T\s*=\s*\d", text)
+            or re.search(r"(?mi)^[^;\n]*(?<![A-Za-z0-9_$])TLCH1\s*\(\s*\"", text)):
         return "sinumerik"
     if re.search(r"(?m)^[^;(\n]*(?<![A-Za-z0-9_$])T\d{1,8}(?![0-9A-Za-z_])[^;\n]*M0?6", text):
         return "fanuc"
@@ -130,26 +147,47 @@ def _sinumerik(riadky: list[str]) -> list[dict]:
         if h and h.group(2).strip() not in podla_nazvu:
             podla_nazvu[h.group(2).strip()] = (h.group(1), _udaje(h.group(3), ("r", "r2", "lc")))
     bez = [_RETAZCE.sub(lambda m: m.group(1) or '""', r.split(";", 1)[0]) for r in riadky]   # bez komentárov a textov
+    zoznam_wpd = {m.group(1): m.group(2) for m in map(_WPD_ZOZNAM.match, riadky) if m}      # kód -> názov z hlavičky archívu
+    kody_tlch: set[str] = set()                                  # kľúče z TLCH1 (osemmiestny kód = číslo nástroja)
     nad = (0, "", {})
+    popis = (0, "")                                              # (riadok, názov) posledného komentára `;T00-názov` (GMX / Gamma)
     prve: dict[str, int] = {}                                    # kľúč -> index riadka prvého volania
     for i, riadok in enumerate(riadky):
         mn = _NASTROJ.match(riadok)
         if mn:
             nad = (i + 1, _nazov_z_komentara(mn.group(1)), _udaje(mn.group(1), ("l", "ll")))
             continue
+        mp = _S_POPIS.match(riadok)
+        if mp:
+            popis = (i + 1, mp.group(1))
+            continue
+        kod_cast, _, koment = riadok.partition(";")
+        mt = _TLCH1.search(kod_cast)
+        if mt and mt.group(1):                                   # archív .WPD: TLCH1("kód",…) je výmena nástroja (bez M6)
+            kluc = mt.group(1)
+            _pridaj(zoznam, kluc, i + 1, koment.strip() or zoznam_wpd.get(kluc, ""))
+            kody_tlch.add(kluc)
+            prve.setdefault(kluc, i)
+            nad = (0, "", {})
+            continue
         for m in _SINU_T.finditer(bez[i]):
-            if not any(_M6.search(bez[j]) for j in range(i, min(len(bez), i + 1 + M6_DOHLAD))):
-                continue                                             # len predvolenie nástroja (T bez M6)
+            if not any(_M6.search(bez[j]) or _TC.search(bez[j]) for j in range(i, min(len(bez), i + 1 + M6_DOHLAD))):
+                continue                                             # len predvolenie nástroja (T bez M6 / TC)
             nazov_t, cislo_t, cislo = m.group(1), m.group(2), m.group(3)
             kluc = nazov_t if nazov_t is not None else (cislo_t or cislo)
             ma_nad = nad[1] and 0 < i + 1 - nad[0] <= NAD_VOLANIM
-            _pridaj(zoznam, kluc, i + 1, (nad[1] if ma_nad else (nazov_t or "")), nad[2] if ma_nad else None)
+            ma_popis = popis[1] and 0 < i + 1 - popis[0] <= POPIS_DOHLAD
+            _pridaj(zoznam, kluc, i + 1,
+                    nad[1] if ma_nad else (popis[1] if ma_popis and nazov_t is not None and kod_nastroja.je_kod(nazov_t)
+                                           else (nazov_t or "")),
+                    nad[2] if ma_nad else None)
             prve.setdefault(kluc, i)
             nad = (0, "", {})
             break
     for kluc, z in zoznam.items():
-        if kluc.isdigit():
+        if kluc.isdigit() or kluc in kody_tlch or kod_nastroja.je_kod(kluc):
             z["cislo"] = kluc
+        z["nazov"] = z["nazov"] or zoznam_wpd.get(kluc, "")
         hlav = podla_nazvu.get(z["nazov"] or kluc)
         if hlav:
             z["cislo"] = z["cislo"] or hlav[0]
@@ -172,9 +210,23 @@ def _fanuc(riadky: list[str]) -> list[dict]:
         m = _FANUC_T.search(bez)
         if m:
             _pridaj(zoznam, m.group(1), i)
+    nazvy = {m.group(1): m.group(2) for m in map(_EIA_ZOZNAM.match, riadky) if m}           # kód -> názov z hlavičky (Mazak)
     for kluc, z in zoznam.items():
         z["cislo"] = kluc
+        z["nazov"] = z["nazov"] or nazvy.get(kluc, "")
     return list(zoznam.values())
+
+
+def _z_kodu(zoznam: list[dict]) -> None:
+    """Chýbajúci priemer / polomer sa doplní z osemmiestneho kódu nástroja, chýbajúci názov nahradí názov typu."""
+    for z in zoznam:
+        k = kod_nastroja.dekoduj(z["cislo"] or z["t"])
+        if not k:
+            continue
+        for kl in ("d", "r"):
+            z[kl] = z[kl] or k[kl]
+        if not z["nazov"] or z["nazov"] == (z["cislo"] or z["t"]):      # Siemens `T="73030402"` bez komentára: názov = kód
+            z["nazov"] = k["typ"]
 
 
 def parsuj(text: str) -> dict:
@@ -182,7 +234,10 @@ def parsuj(text: str) -> dict:
     riadky = text.splitlines()
     typ = rozpoznaj(text)
     fn = {"heidenhain": _heidenhain, "sinumerik": _sinumerik, "fanuc": _fanuc}.get(typ)
-    return {"typ": typ, "nastroje": fn(riadky) if fn else [], "riadkov": len(riadky)}
+    nastroje = fn(riadky) if fn else []
+    if typ in ("sinumerik", "fanuc"):
+        _z_kodu(nastroje)
+    return {"typ": typ, "nastroje": nastroje, "riadkov": len(riadky)}
 
 
 def zostav_text(hlavicka: list[tuple[str, str]], programy: list[dict]) -> str:
