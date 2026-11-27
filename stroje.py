@@ -7,7 +7,8 @@ Zdroje (všetky sa zlúčia, každý stroj raz):
   2. meno CNC listu (config.MACHINE_NAMES – OD…_op20_GMX.xls, …_MAZAK-IG400.pdf)
   3. obsah Excelu (bunka „Názov stroja“ = WFL M40, monoBLOCK - 840D)
   4. cieľ odkazu .lnk na staré heslo – to isté v cieľovom priečinku (štítok „cez odkaz“)
-Text sa skráti podľa config.MACHINES (eVo 80, mono H640…).
+Text sa skráti podľa config.MACHINES (eVo 80, mono H640…) – predvolené pravidlá z modelov v stroje.json (nc_parsery.stroje),
+[stroje] v lupa.ini ich prepíše.
 
 Len číta (na L:\\ nič nemení). Výsledok v pamäti podľa cesty + veľkosti + času zmeny.
 """

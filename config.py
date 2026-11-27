@@ -9,10 +9,12 @@ import sys
 from pathlib import Path
 
 import listy
+import nc_parsery_cesta  # noqa: F401 – pridá priečinok balíka nc_parsery do sys.path
 import odladene
+from nc_parsery import stroje as _stroje_json
 
 # Verzia aplikácie – zvyšovať pri každom vydaní (zobrazuje sa v UI, ikone skenu, logu a vo vlastnostiach exe)
-VERSION = "1.16.2"
+VERSION = "1.17.0"
 
 # Priečinok programu (pri PyInstaller exe = priečinok s exe). Lupa beží z lokálnej kópie
 # v %LOCALAPPDATA% (launcher.py) – spúšťač jej v LUPA_HOME odovzdá svoj priečinok (L:\_Nastroje\lupa),
@@ -197,23 +199,11 @@ def list_sql(f: str = "f", doclists: bool = True) -> tuple[str, list]:
 # -> skratka. Prvé pravidlo, ktoré sedí (regulárny výraz, veľké písmená nerozhodujú).
 # Neznámy stroj sa ukáže tak, ako je v hlavičke – doplň pravidlo.
 # Platí [stroje] v lupa.ini (okno Nastavenia, skratka = výraz); bez nej tieto predvolené.
-DEFAULT_MACHINES = [
-    (r"DMU\s*75|monoBLOCK.*840D", "mono 840D"),
-    (r"DMU\s*65|monoBLOCK", "mono H640"),
-    (r"DMU\s*(80|85)\s*eVo", "eVo 80"),
-    (r"DMU\s*60\s*eVo", "eVo 60"),
-    (r"DMC\s*(80\s*-\s*)?160", "DMC 160"),
-    (r"DMC\s*105", "DMC 105"),
-    (r"3x-HH", "H530 3x"),
-    (r"Kaoming", "Kaoming"),
-    (r"HPM\s*450", "HPM 450"),
-    (r"GMX", "Gmx"),
-    (r"NTX", "NTX"),
-    (r"J-?200", "J200"),
-    (r"IG-?400|i-?400", "IG400"),
-    (r"Mazak|Integrex", "Mazak"),
-    (r"WFL", "WFL"),
-]
+# Predvolené pravidlá sú z `stroje.json` (modely strojov, spoločný balík nc_parsery.stroje: L:\_Nastroje\Nastavenia\stroje.json,
+# bez neho lokálna kópia, inak vstavané predvolené hodnoty); poradie modelov = priorita.
+STROJE_JSON = _stroje_json.cesta_suboru(APP_DIR.parent)   # L:\_Nastroje\Nastavenia\stroje.json
+STROJE = _stroje_json.nacitaj(STROJE_JSON, LOCAL_DIR / "stroje.json")
+DEFAULT_MACHINES = [(vzor, m.kratky) for m in STROJE.modely for vzor in m.hlavicka]
 # Program bez riadku STROJ: -> stroj podľa obsahu začiatku súboru (prvé pravidlo, ktoré sedí)
 # WFL (Edgecam, Siemens): ;$PATH=/_N_WKS_DIR/…_WPD, výmena nástroja TLCH1(…)
 MACHINE_SIGNS = [
