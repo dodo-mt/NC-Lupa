@@ -3,7 +3,7 @@
 Windows aplikácia na prehliadanie a vyhľadávanie zákaziek na sieťovom disku `L:\`.
 Používateľ: CNC programátor (hyperMILL, Heidenhain, Sinumerik). Komunikácia, UI aj komentáre v kóde **po slovensky**.
 
-**Aktuálna verzia: 1.17.0** (`config.VERSION`). História verzií: `CHANGELOG.md`.
+**Aktuálna verzia: 1.17.1** (`config.VERSION`). História verzií: `CHANGELOG.md`.
 CNC znalosti (stroje, prípony, syntax NC a .pof, disky L:\ R:\, vzorky) sú v osobnom skille `cnc-programy` (`%USERPROFILE%\.claude\skills\cnc-programy`).
 
 ## Cieľ
